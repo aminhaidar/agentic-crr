@@ -947,8 +947,30 @@ function renderOperator(){
   renderOpPrompts();
   renderOpLib(opLibTab);
   setTimeout(()=>moveOpLibInk(),20);
+  // The Operator home is owned by React (<OperatorHome/>); the innerHTML
+  // renderers above no-op when their mount points are absent. Notify React so
+  // it can re-pull fixtures whenever the engine re-enters home.
+  try{ window.dispatchEvent(new CustomEvent('op:home')); }catch(e){}
 }
 function renderHome(){ renderOperator(); } /* alias for legacy callers */
+/* Structured home fixtures for the React <OperatorHome/> layer. Keeps the
+   engine the single source of truth for data + actions; React owns markup. */
+function opHomeData(){
+  const conversations=sessions.slice().sort((a,b)=>a.updatedSort-b.updatedSort).map(s=>{
+    const sm=STATUS_META[s.status]||{label:s.status,cls:'grey'};
+    return {icon:IC.chatDot,title:s.title,badge:{label:sm.label,cls:sm.cls},sub:s.sub,time:s.updated,act:{fn:'session',arg:s.id,arg2:0}};
+  });
+  const artFlat=[]; Object.keys(artifacts).forEach(k=>artifacts[k].forEach((a,idx)=>artFlat.push({...a,group:k,idx})));
+  const artifactRows=artFlat.slice(0,8).map(a=>({icon:IC[a.ic],title:a.t,badge:null,sub:a.m,time:a.time,act:{fn:'artifact',arg:a.group,arg2:a.idx}}));
+  const scheduleRows=schedules.map((s,idx)=>({icon:IC.sched,title:s.n,badge:{label:s.on?'On':'Off',cls:s.on?'green':'grey'},sub:`${s.d} · last run ${s.runs[0].time.toLowerCase()}`,time:s.runs[0].time,act:{fn:'schedule',arg:idx,arg2:0}}));
+  return {
+    quick:OP_QUICK.map((key,i)=>({key,code:OB_TYPES[key].code,primary:i===0})),
+    more:OP_QUICK_MORE.map(key=>({key,code:OB_TYPES[key].code,short:OB_TYPES[key].short})),
+    prompts:['file','approve','duesoon','cmpreports'].map(k=>{const s=STARTERS.find(x=>x.key===k)!; return {key:s.key,label:s.t};}),
+    lib:{conversations,artifacts:artifactRows,schedules:scheduleRows},
+    icons:{spark:OB_ICONS.spark,op:IC.op,chev:IC.chev},
+  };
+}
 const OP_QUICK=['be11','be577','be125'];
 const OP_QUICK_MORE=['be185','abs1','aies','qfr9'];
 function renderOpQuick(){
@@ -1010,31 +1032,61 @@ function operatorLaunch(txt,type){
   comp.insertAdjacentElement('afterend', think);
   requestAnimationFrame(()=>think.classList.add('show'));
   setTimeout(()=>{
-    opMorphToFab(comp, ()=>{
-      think.remove();
-      pendingSeed=[
-        {who:'user',text:txt},
-        {who:'op',text:`On it — I've opened your <strong>${OB_TYPES[type].code}</strong>. I'll walk you through Setup first. Ask me anything here as we go.`,ev:'Recognized a “start a report” intent'}
-      ];
-      openReport(type, pendingSeed);
-      setTimeout(openFabSeeded, 480);
-    });
+    // Lift the operator token out of the send button (a ~36px square) so the
+    // morph into the round FAB reads as one continuous element. Capture its box
+    // BEFORE navigating away from home.
+    const seedEl=document.getElementById('opSend')||comp;
+    const a=seedEl.getBoundingClientRect();
+    pendingSeed=[
+      {who:'user',text:txt},
+      {who:'op',text:`On it — I've opened your <strong>${OB_TYPES[type].code}</strong>. I'll walk you through Setup first. Ask me anything here as we go.`,ev:'Recognized a “start a report” intent'}
+    ];
+    const ghost=document.createElement('div'); ghost.className='op-ghost'; ghost.innerHTML=IC.op;
+    ghost.style.left=a.left+'px'; ghost.style.top=a.top+'px'; ghost.style.width=a.width+'px'; ghost.style.height=a.height+'px';
+    ghost.style.borderRadius='11px';
+    document.body.appendChild(ghost);
+    think.remove();
+    // Reveal the report underneath the ghost, holding the real FAB hidden until landing.
+    document.body.classList.add('op-launching','fab-arriving');
+    openReport(type, pendingSeed);
+    opMorphToFab(ghost);
   }, 1150);
 }
-function opMorphToFab(fromEl, done){
+/* Ghost flies send-button → FAB: morphs the square token into the 56px circle,
+   lands, then the real FAB pops in with a halo and the panel opens seeded. */
+function opMorphToFab(ghost){
   const fab=document.getElementById('chatFab');
-  if(!fab){ if(done) done(); return; }
-  const a=fromEl.getBoundingClientRect(), b=fab.getBoundingClientRect();
-  const ghost=document.createElement('div'); ghost.className='op-ghost'; ghost.innerHTML=IC.op;
-  ghost.style.left=a.left+'px'; ghost.style.top=a.top+'px'; ghost.style.width=a.width+'px'; ghost.style.height=a.height+'px';
-  document.body.appendChild(ghost);
+  const finish=()=>{
+    ghost.remove();
+    document.body.classList.remove('fab-arriving');
+    if(fab){
+      const b=fab.getBoundingClientRect();
+      fab.classList.add('fab-pop');
+      setTimeout(()=>fab.classList.remove('fab-pop'),520);
+      const halo=document.createElement('div'); halo.className='fab-halo';
+      const s=Math.max(b.width,b.height);
+      halo.style.left=(b.left+b.width/2-s/2)+'px'; halo.style.top=(b.top+b.height/2-s/2)+'px';
+      halo.style.width=s+'px'; halo.style.height=s+'px';
+      document.body.appendChild(halo);
+      setTimeout(()=>halo.remove(),640);
+    }
+    openFabSeeded();
+    document.body.classList.remove('op-launching');
+  };
+  if(!fab){ finish(); return; }
+  const a=ghost.getBoundingClientRect();
   requestAnimationFrame(()=>{
+    const b=fab.getBoundingClientRect();
+    // translate centre→centre, then scale the square token up to the FAB size.
+    // transform-origin is centre, so the centres stay locked (no top-left drift).
     const tx=(b.left+b.width/2)-(a.left+a.width/2);
     const ty=(b.top+b.height/2)-(a.top+a.height/2);
-    ghost.style.transform=`translate(${tx}px,${ty}px) scale(.05)`;
-    ghost.style.opacity='0'; ghost.style.borderRadius='50%';
+    const sc=b.width/a.width;
+    ghost.style.transform=`translate(${tx}px,${ty}px) scale(${sc})`;
+    ghost.style.borderRadius='50%';
+    ghost.style.boxShadow='var(--shadow-accent),0 8px 24px rgba(0,44,82,.28)';
   });
-  setTimeout(()=>{ ghost.remove(); if(done) done(); }, 640);
+  setTimeout(finish, 600);
 }
 
 /* ---------- Operator library (Conversations / Artifacts / Schedules) ---------- */
@@ -3180,7 +3232,7 @@ function fabSend(preset){
 Object.assign(window as any, { __OP_DATA: { REPORT_TYPES, OB_TYPES, get notifications(){ return notifications; }, get sessions(){ return sessions; } } });
 
 /* ---- expose handlers used by inline onclick attributes ---- */
-Object.assign(window as any, { actionsHTML, advance, agentCard, agentDispatchHtml, agentRowHtml, append, appendAgentDispatch, approveFromLedger, areaStats, attnItems, auditTrailBodyHtml, av, barClsForStatus, be11FormHtml, be577Stub, bindRptSpy, buildDocsTree, calShift, cbcrScopeTableHtml, chip, chooseAction, cite, cleanReply, clearSuggests, clearTyping, closeAllSessionMenus, closeDrawer, closeFab, closeModal, closeOpMore, closeRptForm, closeStartMenu, cmpReportsHtml, cmpYoYHtml, confirmUpload, createReport, ctaRun, curForm, curFormByName, daysLeftOf, daysToDue, defaultReadiness, deleteSession, detectReportType, disableTurn, docTitle, entityTable, escAttr, escapeHtml, evidenceBodyHtml, expandForms, exportBodyHtml, fChoice, fCount, fItem, fMoney, fPart, fSec, fText, fabAction, fabCtxText, fabMsg, fabReplyFor, fabSend, figLine, fileTab, filingCard, filingGroup, filingMetaLine, filingPhaseLabel, filterDocsNav, fmtDate, fmtReportDate, fmtRev, focusInput, formCounts, formsDoneTarget, gapCount, gapsPanel, genBe11Fin, genericFormHtml, go, goToNewSessionWithMessage, grpRow, hubFoundList, hubProbeBody, inReport, initSteps, isFiling, keyDatesCard, ledgerBodyHtml, listItemInfo, lrow, manualFallback, mapMetrics, mapTable, mappingTab, mappingTableHtml, markAllRead, markRailActive, masterFields, mdBlock, mdInline, missingFilingsUpload, moveOpLibInk, moveTabInk, newReportFormNote, newSession, notifClick, obNow, opAutoGrow, opKey, opLib, opLibRow, opMorphToFab, opSend, opStarter, opTurn, openAgentModal, openArtifact, openDoc, openDrawer, openFabFor, openFabSeeded, openFiling, openForm, openModal, openNewReportModal, openReport, openRptForm, openScheduleModal, openSessionById, openSkillModal, openUploadModal, operatorLaunch, ownTag, packageBodyHtml, pad2, paintSteps, parseList, phaseSpineHtml, pickMockFile, pickOther, pickStart, planApprovalCard, planApproveStatusText, planAreas, planAvs, planPeopleCard, planPeopleInner, planSummary, positionStartMenu, prevFilingName, rcpt, readinessBlockHtml, renderAgents, renderArt, renderArtForms, renderAttn, renderChatSession, renderConnectModal, renderDashboard, renderDoc, renderFabSuggests, renderFilings, renderHistorySession, renderHome, renderKpis, renderLink, renderMermaidBlocks, renderNotif, renderOpLib, renderOpPrompts, renderOpQuick, renderOperator, renderRecord, renderReport, renderSched, renderSections, renderSessionSuggests, renderSidebarSessions, renderSources, renderSpine, renderStartMenu, renderStep, renderTabs, renderUpcoming, renderWaitingBanner, resolveDocPath, reviewCounts, reviewFormView, reviewForms, reviewList, reviewTab, rosterChips, rptAcceptSetup, rptAddEntity, rptAddSource, rptApproveEntities, rptApproveScope, rptApproveValidation, rptAskAgent, rptAssignCollector, rptConfirmUpload, rptConnSel, rptConnect, rptConnectPick, rptDue, rptEditEntity, rptEnter, rptFile, rptFormData, rptGoTab, rptGoto, rptHubConfirm, rptHubScan, rptLog, rptManualUpload, rptMapRun, rptMarkReviewed, rptName, rptPeriod, rptRemapResolve, rptRemoveEntity, rptRescope, rptScan, rptScopeRun, rptScrollSpy, rptSetApproval, rptSetForm, rptSetProp, rptSetReadiness, rptSetupRun, rptSign, rptStage, rptTabLabel, rptToFile, rptToMapping, rptToReview, rptToScoping, rptToggleEditEntities, rptTogglePerson, rptTogglePlanEdit, rptUnstage, rptUpload, rptUploadFilings, rptValRun, rptValidate, scanOverlay, scheduleSteps, scopeSummary, scopeTable, scopeTableHtml, scopingTab, scrollDocAnchor, scrollThread, scrollToSec, scrow, seedFab, sendChat, sendReminder, sessionIndicator, sessionRow, setArt, setSessBarClean, setSessBarGeneric, setStarters, setupProgress, setupProposal, setupTab, shortMoney, showToast, showTyping, showWorkQueue, slugify, smartPrompt, smartSuggestChips, sortDocs, sourceDataStep, sourceRow, splitFrontmatter, splitRow, stageBody, stageDone, startClean, startFiling, startMenuMeta, starter, stepsPanelHtml, stubTab, suggestForm, sysTurn, thinkBodyHtml, thinkTitleHtml, toggleAgent, toggleAllForms, toggleArtForms, toggleBlockersOnly, toggleFab, toggleNotif, toggleOpMore, togglePin, toggleRecord, toggleSchedule, toggleSessionMenu, toggleSkill, toggleStartMenu, updateFabCtx, uploadBox, userSay, valChecks, valList, validateBlock, ymd });
+Object.assign(window as any, { actionsHTML, advance, agentCard, agentDispatchHtml, agentRowHtml, append, appendAgentDispatch, approveFromLedger, areaStats, attnItems, auditTrailBodyHtml, av, barClsForStatus, be11FormHtml, be577Stub, bindRptSpy, buildDocsTree, calShift, cbcrScopeTableHtml, chip, chooseAction, cite, cleanReply, clearSuggests, clearTyping, closeAllSessionMenus, closeDrawer, closeFab, closeModal, closeOpMore, closeRptForm, closeStartMenu, cmpReportsHtml, cmpYoYHtml, confirmUpload, createReport, ctaRun, curForm, curFormByName, daysLeftOf, daysToDue, defaultReadiness, deleteSession, detectReportType, disableTurn, docTitle, entityTable, escAttr, escapeHtml, evidenceBodyHtml, expandForms, exportBodyHtml, fChoice, fCount, fItem, fMoney, fPart, fSec, fText, fabAction, fabCtxText, fabMsg, fabReplyFor, fabSend, figLine, fileTab, filingCard, filingGroup, filingMetaLine, filingPhaseLabel, filterDocsNav, fmtDate, fmtReportDate, fmtRev, focusInput, formCounts, formsDoneTarget, gapCount, gapsPanel, genBe11Fin, genericFormHtml, go, goToNewSessionWithMessage, grpRow, hubFoundList, hubProbeBody, inReport, initSteps, isFiling, keyDatesCard, ledgerBodyHtml, listItemInfo, lrow, manualFallback, mapMetrics, mapTable, mappingTab, mappingTableHtml, markAllRead, markRailActive, masterFields, mdBlock, mdInline, missingFilingsUpload, moveOpLibInk, moveTabInk, newReportFormNote, newSession, notifClick, obNow, opAutoGrow, opHomeData, opKey, opLib, opLibRow, opMorphToFab, opSend, opStarter, opTurn, openAgentModal, openArtifact, openDoc, openDrawer, openFabFor, openFabSeeded, openFiling, openForm, openModal, openNewReportModal, openReport, openRptForm, openScheduleModal, openSessionById, openSkillModal, openUploadModal, operatorLaunch, ownTag, packageBodyHtml, pad2, paintSteps, parseList, phaseSpineHtml, pickMockFile, pickOther, pickStart, planApprovalCard, planApproveStatusText, planAreas, planAvs, planPeopleCard, planPeopleInner, planSummary, positionStartMenu, prevFilingName, rcpt, readinessBlockHtml, renderAgents, renderArt, renderArtForms, renderAttn, renderChatSession, renderConnectModal, renderDashboard, renderDoc, renderFabSuggests, renderFilings, renderHistorySession, renderHome, renderKpis, renderLink, renderMermaidBlocks, renderNotif, renderOpLib, renderOpPrompts, renderOpQuick, renderOperator, renderRecord, renderReport, renderSched, renderSections, renderSessionSuggests, renderSidebarSessions, renderSources, renderSpine, renderStartMenu, renderStep, renderTabs, renderUpcoming, renderWaitingBanner, resolveDocPath, reviewCounts, reviewFormView, reviewForms, reviewList, reviewTab, rosterChips, rptAcceptSetup, rptAddEntity, rptAddSource, rptApproveEntities, rptApproveScope, rptApproveValidation, rptAskAgent, rptAssignCollector, rptConfirmUpload, rptConnSel, rptConnect, rptConnectPick, rptDue, rptEditEntity, rptEnter, rptFile, rptFormData, rptGoTab, rptGoto, rptHubConfirm, rptHubScan, rptLog, rptManualUpload, rptMapRun, rptMarkReviewed, rptName, rptPeriod, rptRemapResolve, rptRemoveEntity, rptRescope, rptScan, rptScopeRun, rptScrollSpy, rptSetApproval, rptSetForm, rptSetProp, rptSetReadiness, rptSetupRun, rptSign, rptStage, rptTabLabel, rptToFile, rptToMapping, rptToReview, rptToScoping, rptToggleEditEntities, rptTogglePerson, rptTogglePlanEdit, rptUnstage, rptUpload, rptUploadFilings, rptValRun, rptValidate, scanOverlay, scheduleSteps, scopeSummary, scopeTable, scopeTableHtml, scopingTab, scrollDocAnchor, scrollThread, scrollToSec, scrow, seedFab, sendChat, sendReminder, sessionIndicator, sessionRow, setArt, setSessBarClean, setSessBarGeneric, setStarters, setupProgress, setupProposal, setupTab, shortMoney, showToast, showTyping, showWorkQueue, slugify, smartPrompt, smartSuggestChips, sortDocs, sourceDataStep, sourceRow, splitFrontmatter, splitRow, stageBody, stageDone, startClean, startFiling, startMenuMeta, starter, stepsPanelHtml, stubTab, suggestForm, sysTurn, thinkBodyHtml, thinkTitleHtml, toggleAgent, toggleAllForms, toggleArtForms, toggleBlockersOnly, toggleFab, toggleNotif, toggleOpMore, togglePin, toggleRecord, toggleSchedule, toggleSessionMenu, toggleSkill, toggleStartMenu, updateFabCtx, uploadBox, userSay, valChecks, valList, validateBlock, ymd });
 
 let _legacyStarted = false;
 export function initLegacy(){
