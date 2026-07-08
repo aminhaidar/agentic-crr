@@ -1,0 +1,330 @@
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sb-top">
+      <div class="brand" onclick="go('home')">
+        <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" stroke-linejoin="round"/></svg></div>
+        <span>Agentic CRR</span>
+      </div>
+      <button class="collapse-btn" onclick="document.body.classList.toggle('collapsed');closeStartMenu()" title="Collapse sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2.5"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
+      </button>
+    </div>
+    <div class="startwrap">
+      <button class="newbtn startbtn" onclick="toggleStartMenu(event)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span>Start report</span>
+        <svg class="startbtn-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="start-menu" id="startMenu">
+        <div class="start-menu-lab">Choose a report type</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <div class="nav-item active" data-nav="home" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" stroke-linejoin="round"/></svg><span>Operator</span></div>
+      <div class="nav-item" data-nav="dashboard" onclick="go('dashboard')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg><span>Portfolio</span></div>
+      <div class="nav-item" data-nav="filings" onclick="go('filings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6.5A1.5 1.5 0 015.5 5H10l2 2h6.5A1.5 1.5 0 0120 8.5V18a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 18z"/></svg><span>Projects</span></div>
+      <div class="nav-item" data-nav="sources" onclick="go('sources')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6"/><path d="M4.5 12v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3v-6"/></svg><span>Sources</span></div>
+    </nav>
+    <div class="sb-foot">
+      <div class="nav-item" data-nav="settings" onclick="go('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2.4" fill="#fff"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2.4" fill="#fff"/></svg><span>Settings</span></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <button class="backbtn" id="backbtn" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Back</button>
+      <div class="crumbs"><span class="c-home" onclick="go('home')">Operator</span><span class="sep" id="crumbSep" style="display:none">›</span><span class="c-cur" id="crumbCur"></span></div>
+      <div class="spacer"></div>
+      <div class="presence" id="topPresence">
+        <div class="av dr" title="Julie Ruiz — Preparer">JR</div>
+        <div class="av sc" title="Sarah Chen — Controller">SC</div>
+      </div>
+      <div class="notif-wrap">
+        <button class="ghost bell-btn" onclick="toggleNotif(event)" title="Notifications">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 9a6 6 0 1112 0c0 5 2 6 2 6H4s2-1 2-6z"/><path d="M10 20a2 2 0 004 0"/></svg>
+          <span class="notif-badge" id="notifBadge" style="display:none">0</span>
+        </button>
+        <div class="notif-panel" id="notifPanel"></div>
+      </div>
+      <button class="ghost" id="activityBtn" style="display:none" onclick="openDrawer()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>Activity</button>
+    </div>
+
+    <!-- OPERATOR LAUNCHPAD -->
+    <section class="view active" id="view-home">
+      <div class="op-stage">
+        <div class="op-hero">
+          <div class="op-hero-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" stroke-linejoin="round"/></svg></div>
+          <h1 class="op-greet" id="opGreet">Good morning, Julie</h1>
+          <p class="op-sub">What would you like to file today? Describe it, or pick a report type — the Operator's agents take it from there.</p>
+
+          <div class="op-quick" id="opQuick"></div>
+
+          <div class="op-composer" id="opComposer">
+            <div class="op-composer-in">
+              <textarea id="opInput" rows="1" placeholder="Ask the Operator, or say “Start a BE-11 for fiscal year 2025”…" onkeydown="opKey(event)" oninput="opAutoGrow(this)"></textarea>
+              <div class="op-composer-bar">
+                <button class="op-plus" title="Attach source data" onclick="showToast('Attach source data (demo)')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                <div class="op-composer-ctl">
+                  <button class="op-ctl-ghost" title="Voice (demo)" onclick="showToast('Voice input (demo)')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0012 0M12 17v4"/></svg></button>
+                  <button class="op-send" id="opSend" onclick="opSend()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="op-prompts" id="opPrompts"></div>
+        </div>
+
+        <div class="op-lib">
+          <div class="op-lib-tabs" id="opLibTabs">
+            <button class="op-lib-tab active" data-lib="conversations" onclick="opLib('conversations')">Conversations</button>
+            <button class="op-lib-tab" data-lib="artifacts" onclick="opLib('artifacts')">Artifacts</button>
+            <button class="op-lib-tab" data-lib="schedules" onclick="opLib('schedules')">Schedules</button>
+            <span class="op-lib-ink" id="opLibInk"></span>
+          </div>
+          <div class="op-lib-body" id="opLibBody"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DASHBOARD -->
+    <section class="view" id="view-dashboard">
+      <div class="wrap" id="dashWrap"></div>
+    </section>
+
+    <!-- REPORT (tabbed lifecycle) -->
+    <section class="view" id="view-report">
+      <div class="rp-scan-overlay" id="rpScanOverlay"><div class="ob-scan-line"></div></div>
+      <div class="rp-wrap">
+        <div class="rp-head">
+          <div class="rp-mark" id="rpMark">BE-11</div>
+          <div class="rp-head-txt">
+            <h2 class="rp-title" id="rpTitle">BE-11 Project</h2>
+            <div class="rp-sub" id="rpSub">Annual Survey of U.S. Direct Investment Abroad · BEA</div>
+          </div>
+          <div class="rp-dates" id="rpDates"></div>
+        </div>
+
+        <div class="rp-layout">
+          <aside class="rp-side">
+            <div class="rp-life" id="rpTabs"></div>
+            <div class="rp-attn" id="rpAttn"></div>
+          </aside>
+          <div class="rp-main">
+            <div class="rp-kpis" id="rpKpis"></div>
+            <div class="rp-body" id="rpBody"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SESSION -->
+    <section class="view" id="view-session">
+      <div class="session-main">
+        <div class="sessbar">
+          <div class="fmark" id="sessMark">BE-11</div>
+          <div style="flex:1"><h2 id="sessTitle">BE-11 · FY25</h2><div class="sm" id="sessMeta">Annual Survey of U.S. Direct Investment Abroad · BEA</div></div>
+          <span class="pill green dotp" id="sessStatus">In progress</span>
+        </div>
+        <div class="thread" id="thread"><div class="thread-inner" id="threadInner"></div></div>
+        <div class="composer">
+          <div class="composer-inner">
+            <div class="suggests" id="suggests"></div>
+            <div class="composer-input">
+              <input id="chatInput" placeholder="Message the Operator…" onkeydown="if(event.key==='Enter')sendChat()" />
+              <button class="send" id="sendBtn" onclick="sendChat()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AGENTS -->
+    <section class="view" id="view-agents">
+      <div class="wrap wide">
+        <h2 class="title">Agents &amp; Skills</h2>
+        <p class="subtitle">Every agent the Operator can call. Click one to see how it works. Turn capabilities on or off and set how far each may act on its own.</p>
+        <div class="banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+          <div>You <strong>configure</strong> here — enable, disable, set autonomy ceilings. Editing an agent's <em>logic</em> routes to governed authoring and shadow-mode review. No agent crosses a signature commit.</div>
+        </div>
+        <div class="section-h">Agents</div>
+        <div class="card" id="agentsList"></div>
+        <div class="section-h">Skills &amp; tools</div>
+        <div class="card" id="skillsList"></div>
+      </div>
+    </section>
+
+    <!-- ARTIFACTS -->
+    <section class="view" id="view-artifacts">
+      <div class="wrap wide">
+        <h2 class="title">Artifacts</h2>
+        <p class="subtitle">Everything the agents produce — versioned, sourced, and one click away.</p>
+        <div style="margin:22px 0 16px;display:flex;gap:14px;align-items:center">
+          <div class="seg" id="artSeg">
+            <button class="active" onclick="setArt('Projects',this)">Projects</button>
+            <button onclick="setArt('Forms',this)">Forms</button>
+            <button onclick="setArt('Packages',this)">Packages</button>
+            <button onclick="setArt('Audits',this)">Audits</button>
+          </div>
+          <span class="muted" id="artCount"></span>
+        </div>
+        <div class="card list-card" id="artList"></div>
+      </div>
+    </section>
+
+    <!-- SCHEDULES -->
+    <section class="view" id="view-schedules">
+      <div class="wrap wide">
+        <h2 class="title">Schedules</h2>
+        <p class="subtitle">Standing agents that watch the portfolio between filings. Click one to see its latest reports. They observe, recommend, and prepare — findings come to you; they never file on their own.</p>
+        <div class="section-h">Scheduled agents</div>
+        <div class="card" id="schedList"></div>
+        <div class="section-h">Recent findings</div>
+        <div class="card list-card" id="schedFindings"></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="view" id="view-settings">
+      <div class="wrap">
+        <h2 class="title">Settings</h2>
+        <p class="subtitle">Agents, connectors, and how much the Operator does on its own.</p>
+        <div class="section-h">Automation</div>
+        <div class="card">
+          <div class="set-row clickable" onclick="go('agents')">
+            <div class="sl"><div class="t">Agents &amp; Skills</div><div class="d">See every agent &amp; skill, turn them on/off, and set autonomy ceilings</div></div>
+            <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6"/></svg></span>
+          </div>
+        </div>
+        <div class="section-h">Connectors</div>
+        <div class="card">
+          <div class="set-row"><div class="sl"><div class="t">NetSuite ERP</div><div class="d">FY25 financials, revenue, tax</div></div><span class="pill green dotp">Connected</span></div>
+          <div class="set-row"><div class="sl"><div class="t">Consolidation system</div><div class="d">Ownership &amp; intercompany</div></div><span class="pill green dotp">Connected</span></div>
+          <div class="set-row"><div class="sl"><div class="t">Email &amp; Teams</div><div class="d">Data collection &amp; chase channel</div></div><span class="pill green dotp">Connected</span></div>
+        </div>
+        <div class="section-h">Autonomy defaults</div>
+        <div class="card">
+          <div class="set-row"><div class="sl"><div class="t">Default autonomy ceiling</div><div class="d">How far agents act before asking. Signature commits always require a human.</div></div>
+            <select class="mini"><option>Read</option><option>Recommend</option><option selected>Prepare</option></select></div>
+          <div class="set-row"><div class="sl"><div class="t">Earned autonomy</div><div class="d">Raise ceilings as track record proves out</div></div><button class="switch on" onclick="this.classList.toggle('on')"></button></div>
+        </div>
+        <div class="section-h">Notifications</div>
+        <div class="card">
+          <div class="set-row"><div class="sl"><div class="t">Digest cadence</div><div class="d">Roll up non-urgent findings</div></div>
+            <select class="mini"><option>Daily</option><option selected>Weekdays</option><option>Weekly</option></select></div>
+          <div class="set-row"><div class="sl"><div class="t">Urgent alerts</div><div class="d">Deadlines &amp; blocking issues · in-app + Teams</div></div><button class="switch on" onclick="this.classList.toggle('on')"></button></div>
+        </div>
+        <div class="section-h">People &amp; permissions</div>
+        <div class="card">
+          <div class="set-row"><div class="sl"><div class="t">Julie Ruiz</div><div class="d">Preparer · can act &amp; commit within permission</div></div><span class="pill blue">Preparer</span></div>
+          <div class="set-row"><div class="sl"><div class="t">Sarah Chen</div><div class="d">Controller · confirms scope &amp; final approval</div></div><span class="pill violet">Reviewer-approver</span></div>
+          <div class="set-row"><div class="sl"><div class="t">Maria Keller</div><div class="d">Affiliate controller · answers requests for her entity</div></div><span class="pill">Data owner</span></div>
+          <div class="set-row"><div class="sl"><div class="t">Tom Reyes</div><div class="d">Brazil finance · answers requests for his entity</div></div><span class="pill">Data owner</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRODUCT DOCS -->
+    <section class="view" id="view-docs">
+      <div class="docs-shell">
+        <nav class="docs-nav">
+          <div class="docs-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg><input id="docsSearch" placeholder="Search docs" oninput="filterDocsNav()"/></div>
+          <div id="docsTree"></div>
+        </nav>
+        <div class="docs-content" id="docsContent"></div>
+      </div>
+    </section>
+
+    <!-- MY REPORTS (list) -->
+    <section class="view" id="view-filings">
+      <div class="wrap wide">
+        <div class="view-head">
+          <div>
+            <h2 class="title">My Projects</h2>
+            <p class="subtitle">Every regulatory report you own, across this cycle and prior periods. A report bundles the forms for one obligation — open one to see its dashboard.</p>
+          </div>
+          <button class="btn primary" onclick="openNewReportModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New report</button>
+        </div>
+        <div id="filingsGroups"></div>
+      </div>
+    </section>
+
+    <!-- SINGLE FILING DASHBOARD -->
+    <section class="view" id="view-filing">
+      <div class="wrap wide" id="filingDash"></div>
+    </section>
+
+    <!-- SINGLE FORM (report child) -->
+    <section class="view" id="view-form">
+      <div class="wrap wide" id="formPage"></div>
+    </section>
+
+    <!-- SOURCE DATA -->
+    <section class="view" id="view-sources">
+      <div class="wrap wide">
+        <h2 class="title">Source data</h2>
+        <p class="subtitle">The systems and files the Operator draws on. When a required figure has no source, the agent will ask you to upload it here.</p>
+        <div style="display:flex;justify-content:flex-end;margin:22px 0 -6px"><button class="btn primary" onclick="openUploadModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M12 16V4m0 0L8 8m4-4l4 4"/><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>Upload data</button></div>
+        <div class="section-h">Connected sources</div>
+        <div class="card" id="sourcesConnected"></div>
+        <div class="section-h">Manual uploads</div>
+        <div class="card" id="sourcesUploads"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- DRAWER -->
+<div class="drawer" id="drawer">
+  <div class="drawer-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg><h3>Agent activity</h3><button class="xbtn" onclick="closeDrawer()">✕</button></div>
+  <div class="drawer-b">
+    <p class="muted" style="font-size:12.5px;margin-bottom:14px">The Operator is running <strong>3 specialist agents</strong> in parallel. It hides the machinery by default — this is the reasoning, one step away.</p>
+    <div class="anode"><div class="at"><span class="sd run"></span><span class="an">Collection &amp; Chase agent</span><span class="lvl prepare" style="margin-left:auto">Prepare</span></div>
+      <div class="as">Turning 12 gaps into tracked requests across 8 owners</div>
+      <div class="task"><span class="sd done"></span>Germany Manufacturing GmbH — drafted</div>
+      <div class="task"><span class="sd run"></span>Brazil Services Ltda — drafting</div>
+      <div class="task"><span class="sd wait"></span>2 owners — awaiting confirmation</div></div>
+    <div class="anode"><div class="at"><span class="sd done"></span><span class="an">Mapping &amp; Resolve agent</span><span class="lvl recommend" style="margin-left:auto">Recommend</span></div>
+      <div class="as">18 fields mapped high-confidence · 7 flagged for review</div>
+      <div class="task"><span class="sd done"></span>Assets, revenue, net income — mapped</div>
+      <div class="task"><span class="sd wait"></span>Industry classification — needs review</div></div>
+    <div class="anode"><div class="at"><span class="sd q"></span><span class="an">Validation &amp; Readiness agent</span><span class="lvl read" style="margin-left:auto">Read</span></div>
+      <div class="as">Queued — runs when facts are accepted</div></div>
+    <p class="muted" style="font-size:12px;margin-top:8px">Every task is attributed and audited. A <span class="lvl commit" style="font-size:9px">Commit</span> always escalates to you.</p>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()"><div class="modal" id="modal"></div></div>
+
+<!-- TOAST -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- AI CHAT FAB -->
+<button class="fab" id="chatFab" onclick="toggleFab()" title="Ask the Operator about this report">
+  <span class="fab-ic-chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" stroke-linejoin="round"/></svg></span>
+  <span class="fab-ic-close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+</button>
+<div class="fab-panel" id="fabPanel">
+  <div class="fab-head">
+    <div class="fab-head-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" stroke-linejoin="round"/></svg></div>
+    <div class="fab-head-txt"><div class="fab-head-name">Operator</div><div class="fab-head-ctx" id="fabCtx">General workspace</div></div>
+    <button class="xbtn" onclick="toggleFab()">✕</button>
+  </div>
+  <div class="fab-body" id="fabBody"></div>
+  <div class="fab-composer">
+    <div class="fab-suggests" id="fabSuggests"></div>
+    <div class="composer-input">
+      <input id="fabInput" placeholder="Ask about this report…" onkeydown="if(event.key==='Enter')fabSend()" />
+      <button class="send" onclick="fabSend()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<!-- Mermaid.js — renders the diagram code-fences inside Product Docs.
+     Loaded from a CDN; if it's unreachable (offline), the docs viewer
+     falls back to showing the raw diagram source instead of failing. -->

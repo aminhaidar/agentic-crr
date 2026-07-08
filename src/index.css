@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* NOTE: the prototype's hand-authored design system (src/styles/prototype.css)
+   is imported from main.tsx *after* this file, so it loads last and owns the
+   visual language while still winning over Tailwind's preflight. A CSS @import
+   here would be invalid (it must precede other rules) and get dropped. */
+
+@layer base {
+  #root {
+    height: 100%;
+  }
+}
+
+/* Radix-positioned popovers own their own placement — neutralize the
+   prototype's fixed positioning so shadcn menus float from their trigger. */
+.smenu-radix {
+  position: static !important;
+  transform: none !important;
+}
+[data-radix-popper-content-wrapper] {
+  z-index: 200 !important;
+}
