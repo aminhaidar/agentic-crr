@@ -1,13 +1,12 @@
 
-<a class="skip-link" href="#mainContent" onclick="document.getElementById('mainContent')?.focus()">Skip to content</a>
 <div class="app">
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="sb-top">
-      <button type="button" class="brand" onclick="go('home')" aria-label="Agentic CRR — go to Operator home">
-        <span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" stroke-linejoin="round"/></svg></span>
+      <div class="brand" onclick="go('home')">
+        <div class="logo"><img src="/logo.png" alt="Workiva" /></div>
         <span>Agentic CRR</span>
-      </button>
+      </div>
       <button class="collapse-btn" onclick="document.body.classList.toggle('collapsed');closeStartMenu()" title="Collapse sidebar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2.5"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
       </button>
@@ -15,26 +14,25 @@
     <div class="startwrap">
       <button class="newbtn startbtn" onclick="toggleStartMenu(event)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span>Start report</span>
+        <span>Start project</span>
         <svg class="startbtn-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <div class="start-menu" id="startMenu">
         <div class="start-menu-lab">Choose a report type</div>
       </div>
     </div>
-    <nav class="nav" aria-label="Primary">
-      <button type="button" class="nav-item active" data-nav="home" aria-current="page" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" stroke-linejoin="round"/></svg><span>Operator</span></button>
-      <button type="button" class="nav-item" data-nav="dashboard" onclick="go('dashboard')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg><span>Portfolio</span></button>
-      <button type="button" class="nav-item" data-nav="filings" onclick="go('filings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 6.5A1.5 1.5 0 015.5 5H10l2 2h6.5A1.5 1.5 0 0120 8.5V18a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 18z"/></svg><span>Projects</span></button>
-      <button type="button" class="nav-item" data-nav="sources" onclick="go('sources')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6"/><path d="M4.5 12v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3v-6"/></svg><span>Sources</span></button>
+    <nav class="nav">
+      <div class="nav-item active" data-nav="home" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" stroke-linejoin="round"/></svg><span>Operator</span></div>
+      <div class="nav-item" data-nav="filings" onclick="go('filings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6.5A1.5 1.5 0 015.5 5H10l2 2h6.5A1.5 1.5 0 0120 8.5V18a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 18z"/></svg><span>Projects</span></div>
+      <div class="nav-item" data-nav="sources" onclick="go('sources')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6"/><path d="M4.5 12v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3v-6"/></svg><span>Sources</span></div>
     </nav>
     <div class="sb-foot">
-      <button type="button" class="nav-item" data-nav="settings" onclick="go('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2.4" fill="#fff"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2.4" fill="#fff"/></svg><span>Settings</span></button>
+      <div class="nav-item" data-nav="settings" onclick="go('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2.4" fill="#fff"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2.4" fill="#fff"/></svg><span>Settings</span></div>
     </div>
   </aside>
 
   <!-- MAIN -->
-  <main class="main" id="mainContent" tabindex="-1">
+  <div class="main">
     <div class="topbar">
       <button class="backbtn" id="backbtn" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Back</button>
       <div class="crumbs"><span class="c-home" onclick="go('home')">Operator</span><span class="sep" id="crumbSep" style="display:none">›</span><span class="c-cur" id="crumbCur"></span></div>
@@ -54,14 +52,55 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>Activity</button>
     </div>
 
-    <!-- OPERATOR LAUNCHPAD — owned by React (<OperatorHome/> portals into #opHomeRoot) -->
-    <section class="view active" id="view-home" aria-label="Operator">
-      <div id="opHomeRoot"></div>
+    <!-- OPERATOR LAUNCHPAD -->
+    <section class="view active" id="view-home">
+      <div class="op-stage">
+        <div class="op-hero">
+          <div class="op-hero-mark"><img src="/logo.png" alt="Workiva" /></div>
+          <h1 class="op-greet" id="opGreet">Good morning, Julie</h1>
+          <p class="op-sub">What would you like to file today? Describe it, or pick a report type — the Operator's agents take it from there.</p>
+
+          <div class="op-quick" id="opQuick"></div>
+
+          <div class="op-composer" id="opComposer">
+            <div class="op-composer-in">
+              <textarea id="opInput" rows="1" placeholder="Ask the Operator, or say “Start a BE-11 for fiscal year 2025”…" onkeydown="opKey(event)" oninput="opAutoGrow(this)"></textarea>
+              <div class="op-composer-bar">
+                <button class="op-plus" title="Attach source data" onclick="showToast('Attach source data (demo)')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                <div class="op-composer-ctl">
+                  <button class="op-ctl-ghost" title="Voice (demo)" onclick="showToast('Voice input (demo)')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0012 0M12 17v4"/></svg></button>
+                  <button class="op-send" id="opSend" onclick="opSend()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="op-prompts" id="opPrompts"></div>
+        </div>
+
+        <div class="op-lib">
+          <div class="op-lib-tabs" id="opLibTabs">
+            <button class="op-lib-tab active" data-lib="conversations" onclick="opLib('conversations')">Conversations</button>
+            <button class="op-lib-tab" data-lib="artifacts" onclick="opLib('artifacts')">Artifacts</button>
+            <button class="op-lib-tab" data-lib="schedules" onclick="opLib('schedules')">Schedules</button>
+            <span class="op-lib-ink" id="opLibInk"></span>
+          </div>
+          <div class="op-lib-body" id="opLibBody"></div>
+        </div>
+      </div>
     </section>
 
-    <!-- DASHBOARD -->
-    <section class="view" id="view-dashboard">
-      <div class="wrap" id="dashWrap"></div>
+    <!-- SETUP WIZARD (full screen — starts a project) -->
+    <section class="view" id="view-setup">
+      <div class="setup-wiz">
+        <div class="setup-wiz-head">
+          <div class="rp-mark" id="setupMark">BE-11</div>
+          <div class="rp-head-txt">
+            <h2 class="rp-title" id="setupTitle">Start a BE-11 project</h2>
+            <div class="rp-sub" id="setupSub">Annual Survey of U.S. Direct Investment Abroad · BEA</div>
+          </div>
+        </div>
+        <div class="setup-wiz-body" id="setupBody"></div>
+      </div>
     </section>
 
     <!-- REPORT (tabbed lifecycle) -->
@@ -77,16 +116,8 @@
           <div class="rp-dates" id="rpDates"></div>
         </div>
 
-        <div class="rp-layout">
-          <aside class="rp-side">
-            <div class="rp-life" id="rpTabs"></div>
-            <div class="rp-attn" id="rpAttn"></div>
-          </aside>
-          <div class="rp-main">
-            <div class="rp-kpis" id="rpKpis"></div>
-            <div class="rp-body" id="rpBody"></div>
-          </div>
-        </div>
+        <div class="rp-tabs" id="rpTabs"></div>
+        <div class="rp-body" id="rpBody"></div>
       </div>
     </section>
 
@@ -216,8 +247,9 @@
             <h2 class="title">My Projects</h2>
             <p class="subtitle">Every regulatory report you own, across this cycle and prior periods. A report bundles the forms for one obligation — open one to see its dashboard.</p>
           </div>
-          <button class="btn primary" onclick="openNewReportModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New report</button>
+          <button class="btn primary" onclick="startProject()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Start Project</button>
         </div>
+        <div id="filingsSummary"></div>
         <div id="filingsGroups"></div>
       </div>
     </section>
@@ -244,7 +276,7 @@
         <div class="card" id="sourcesUploads"></div>
       </div>
     </section>
-  </main>
+  </div>
 </div>
 
 <!-- DRAWER -->

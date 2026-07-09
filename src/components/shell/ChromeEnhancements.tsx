@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { NewReportDialog } from "./NewReportDialog";
-import { OperatorHome } from "./OperatorHome";
+import { ThemeTransition } from "./ThemeTransition";
 
 /**
  * React + shadcn chrome layered on top of the imperative shell. The engine owns
@@ -15,12 +14,9 @@ import { OperatorHome } from "./OperatorHome";
  */
 export function ChromeEnhancements() {
   const [newReportOpen, setNewReportOpen] = useState(false);
-  const [homeRoot, setHomeRoot] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     window.__openNewReport = () => setNewReportOpen(true);
-    // The shell markup (injected before effects run) provides the mount point.
-    setHomeRoot(document.getElementById("opHomeRoot"));
     return () => {
       delete window.__openNewReport;
     };
@@ -28,8 +24,8 @@ export function ChromeEnhancements() {
 
   return (
     <>
+      <ThemeTransition />
       <NewReportDialog open={newReportOpen} onOpenChange={setNewReportOpen} />
-      {homeRoot && createPortal(<OperatorHome />, homeRoot)}
     </>
   );
 }

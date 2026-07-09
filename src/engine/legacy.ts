@@ -252,12 +252,112 @@ const REPORT_TYPES=[
   {code:'SF-425',name:'Federal Financial Report',sub:'Federal Financial Report · GSA',unit:'federal award',formCode:'SF-425',formNote:'One form per federal award.'},
 ];
 /* ---------- navigation (no dead ends) ---------- */
-const titles={home:'Operator',dashboard:'Portfolio',filings:'Projects',agents:'Agents & Skills',artifacts:'Artifacts',sources:'Sources',schedules:'Schedules',settings:'Settings',docs:'Product Docs',session:'Session',filing:'Report',form:'Form',onboard:'Start a report',report:'Project'};
-const globalViews=['home','dashboard','filings','artifacts','sources','schedules','settings','docs'];
-const navFor={filing:'filings',form:'filings',agents:'settings',session:'',onboard:'home',report:'filings'};
-const backTargets={filing:'filings',form:'filings',agents:'settings',onboard:'home',report:'home'};
+const titles={home:'Operator',filings:'Projects',agents:'Agents & Skills',artifacts:'Artifacts',sources:'Sources',schedules:'Schedules',settings:'Settings',docs:'Product Docs',session:'Session',filing:'Report',form:'Form',onboard:'Start a report',setup:'Start a project',report:'Project'};
+const globalViews=['home','filings','artifacts','sources','schedules','settings','docs'];
+const navFor={filing:'filings',form:'filings',agents:'settings',session:'',onboard:'home',setup:'filings',report:'filings'};
+const backTargets={filing:'filings',form:'filings',agents:'settings',onboard:'home',setup:'filings',report:'filings'};
 let currentSessionId=null, docsInit=false;
+/* Track the deep-link context that isn't otherwise stored on module state, so the
+   URL can be reconstructed for the Project dashboard and individual Form pages. */
+let currentFilingId=null, currentFormReportId=null, currentFormId=null;
+/* Active tab on the single-form page (mirrors the Project overview layout). */
+let currentFormTab='overview';
+/* Resolved context for the single-form page. Set by openForm (from a Project
+   dashboard) or openProjectForm (from the interactive report). Lets the page
+   render, switch tabs, and wire its Back/Operator/Upload actions for either
+   entry point without re-looking-up data. */
+let currentFormCtx=null;
+
+/* ---------- deep linking + navigation trackback ----------
+   The whole app lives on a single URL and drives ~15 views imperatively. This
+   layer mirrors the active view (and its nested state) into the query string via
+   history.pushState so every page is bookmarkable/shareable, and restores that
+   state on load and on browser back/forward (popstate) — giving real trackback.
+   __suppressRoute guards restore so replaying navigation doesn't push new entries.
+   __routeDepth lets the in-app Back button retrace real history when it exists. */
+let __suppressRoute=false, __routeDepth=0;
+function currentRoute(){
+  const active=document.querySelector('.view.active');
+  const view=active?active.id.replace('view-',''):'home';
+  const p=new URLSearchParams();
+  if(view!=='home') p.set('view',view);
+  if(view==='home' && opLibTab && opLibTab!=='conversations') p.set('lib',opLibTab);
+  if(view==='setup' && RPT){ p.set('ob',RPT.type); }
+  if(view==='report' && RPT){ p.set('ob',RPT.type); if(RPT.tab) p.set('tab',RPT.tab); }
+  if(view==='filing' && currentFilingId) p.set('filing',currentFilingId);
+  if(view==='form'){ if(currentFormReportId) p.set('filing',currentFormReportId); if(currentFormId) p.set('form',currentFormId); if(currentFormTab && currentFormTab!=='overview') p.set('ftab',currentFormTab); }
+  if(view==='session' && currentSessionId) p.set('session',currentSessionId);
+  if(view==='artifacts' && artTab) p.set('tab',artTab);
+  if(view==='docs' && currentDocKey) p.set('doc',currentDocKey);
+  return p.toString();
+}
+function syncUrl(replace){
+  if(__suppressRoute) return;
+  const qs=currentRoute();
+  const cur=location.search.replace(/^\?/,'');
+  if(cur===qs) return;
+  const target=qs?('?'+qs):location.pathname;
+  try{
+    if(replace){ history.replaceState({d:__routeDepth},'',target); }
+    else { __routeDepth++; history.pushState({d:__routeDepth},'',target); }
+  }catch(e){}
+}
+/* In-app Back moves UP the page hierarchy (to the logical parent view), not
+   through browser history. Browser back/forward still retraces via popstate. */
+function goBack(view){ go(backTargets[view]||'home'); }
+function applyRoute(){
+  const q=new URLSearchParams(location.search);
+  const view=q.get('view')||'home';
+  const ob=q.get('ob');
+  __suppressRoute=true;
+  try{
+    if(view==='report' && ob && OB_TYPES[ob]){
+      openReport(ob, null, {resume:true});
+      const tab=q.get('tab'); if(tab) rptGoTab(tab);
+    } else if(view==='setup' && ob && OB_TYPES[ob]){
+      openReport(ob);
+    } else if(ob && OB_TYPES[ob]){
+      openReport(ob);
+    } else if(view==='filing' && q.get('filing')){
+      openFiling(q.get('filing'));
+    } else if(view==='form' && q.get('filing') && q.get('form')){
+      openForm(q.get('filing'), q.get('form'), {tab:q.get('ftab')||'overview'});
+    } else if(view==='form'){
+      go('home');
+    } else if(view==='session'){
+      const sid=q.get('session'); if(sid) openSessionById(sid); else newSession();
+    } else if(view==='docs'){
+      go('docs'); renderDoc(q.get('doc')||'INDEX.md', q.get('anchor')||'');
+    } else if(view==='artifacts'){
+      go('artifacts');
+      const tab=q.get('tab');
+      if(tab){ artTab=tab; document.querySelectorAll('#artSeg button').forEach(b=>b.classList.toggle('active', (b.textContent||'').trim()===tab)); renderArt(); }
+    } else if(document.getElementById('view-'+view)){
+      go(view);
+      if(view==='home'){ const lib=q.get('lib'); if(lib) opLib(lib); }
+    } else {
+      go('home');
+    }
+  } finally { __suppressRoute=false; }
+}
+/* When a navigation crosses the dark(Operator Home)/light boundary, hand the
+   actual swap to the React iris transition (installed at window.__opThemeTransition)
+   so the theme change is animated instead of hard-cut. The guard flag lets the
+   transition re-enter go() to perform the real navigation while fully covered. */
+let __opTransitioning=false;
 function go(view){
+  if(view==='dashboard') view='filings'; // Portfolio merged into Projects
+  if(!__opTransitioning){
+    const bridge=(window as any).__opThemeTransition;
+    const reduce=window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const wasDark=document.body.classList.contains('op-home');
+    const willDark=view==='home';
+    if(bridge && !reduce && wasDark!==willDark){
+      __opTransitioning=true;
+      bridge({ toDark:willDark, run:()=>{ try{ go(view); } finally { __opTransitioning=false; } } });
+      return;
+    }
+  }
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+view).classList.add('active');
   const navHi=navFor[view]!==undefined?navFor[view]:view;
@@ -276,19 +376,20 @@ function go(view){
   homeCrumb.style.color=sub?'var(--text-3)':'var(--text)';
   const bb=document.getElementById('backbtn');
   bb.style.display=sub?'inline-flex':'none';
-  bb.onclick=()=>go(backTargets[view]||'home');
+  bb.onclick=()=>goBack(view);
   document.getElementById('activityBtn').style.display=(view==='session')?'inline-flex':'none';
   closeDrawer(); closeModal(); closeAllSessionMenus(); closeStartMenu();
   document.getElementById('notifPanel')?.classList.remove('open');
   if(view==='docs' && !docsInit){ docsInit=true; buildDocsTree(); renderDoc('INDEX.md',''); }
   document.body.classList.toggle('op-home', view==='home');
   document.body.classList.toggle('in-report', view==='report');
-  if(view!=='report') closeFab();
+  document.body.classList.toggle('in-setup', view==='setup');
+  if(view!=='report' && view!=='setup') closeFab();
   if(view==='home') renderOperator();
-  if(view==='dashboard') renderDashboard();
   if(view==='filings') renderFilings();
   if(view==='sources') renderSources();
   updateFabCtx(view);
+  syncUrl();
 }
 function openSessionById(id){
   const s=sessions.find(x=>x.id===id); if(!s) return;
@@ -343,6 +444,9 @@ function toggleStartMenu(e){
 }
 function closeStartMenu(){ document.getElementById('startMenu')?.classList.remove('open'); }
 function pickStart(type){ closeStartMenu(); openReport(type); }
+/* "Start Project" CTA (My Projects header) — launches the full-screen project
+   start wizard for the BE-11 lifecycle. */
+function startProject(){ closeStartMenu(); closeModal(); openReport('be11'); }
 document.addEventListener('click',(e)=>{ if(!e.target.closest('.startwrap') && !e.target.closest('#startMenu')) closeStartMenu(); });
 
 /* ---------- sidebar: sessions (pin / delete / timestamps) ---------- */
@@ -480,7 +584,7 @@ function filingCard(s){
   const cls=s.waitingOn?'amber':(s.status==='needs_you'?'blue':(s.status==='done'?'':''));
   const barCls=s.waitingOn?'amber':(s.status==='needs_you'?'blue':'');
   const statusHtml=s.waitingOn?`<span class="pill amber dotp">Waiting on ${PEOPLE[s.waitingOn.who].name.split(' ')[0]}</span>`:`<span class="pill ${(STATUS_META[s.status]||{cls:'green'}).cls} dotp">${(STATUS_META[s.status]||{label:'Active'}).label}</span>`;
-  return `<div class="filing" onclick="openFiling('${s.id}')">
+  return `<div class="filing" onclick="openProject('${s.id}')">
     <div class="fmark">${s.code}</div>
     <div class="fbody"><div class="fname">${s.title}</div><div class="fmeta">${s.sub} · ${filingPhaseLabel(s)}</div><div class="bar ${barCls}"><i style="width:${s.pct||0}%"></i></div></div>
     <div style="text-align:right;min-width:120px">${statusHtml}<div class="presence" style="justify-content:flex-end;margin-top:8px">${s.people.map(av).join('')}</div></div>
@@ -496,6 +600,8 @@ function renderFilings(){
   const inProgress=all.filter(s=>s.status!=='done');
   const completed=all.filter(s=>s.status==='done' && !s.archived);
   const archived=all.filter(s=>s.archived);
+  const summary=document.getElementById('filingsSummary');
+  if(summary) summary.innerHTML=portfolioSummaryHtml();
   document.getElementById('filingsGroups').innerHTML=
     filingGroup('In progress',inProgress)+filingGroup('Completed',completed)+filingGroup('Archived',archived);
 }
@@ -670,8 +776,30 @@ function keyDatesCard(s){
     row('due','Filing due',s.dueDate,dueRel)+
   `</div>`;
 }
+/* Map a filing session to the report-experience type key (OB_TYPES), so a click
+   in a project list can open the interactive Project/report view. Falls back to
+   the filing dashboard for codes that don't have a report experience (e.g. CbCR,
+   SF-425). */
+function projectReportType(s){
+  if(!s) return null;
+  if(s.engine && OB_TYPES[s.engine]) return s.engine;
+  const c=(s.code||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(c==='BE11') return 'be11';
+  if(c==='BE577') return 'be577';
+  if(c==='BE125') return 'be125';
+  return detectReportType(s.title||s.code||'');
+}
+/* Project lists open the report view (openReport) rather than the filing
+   dashboard. Unsupported report types fall back to the filing detail page. */
+function openProject(id){
+  const s=sessions.find(x=>x.id===id); if(!s) return;
+  const t=projectReportType(s);
+  if(t && OB_TYPES[t]) openReport(t, null, {resume:true});
+  else openFiling(id);
+}
 function openFiling(id){
   const s=sessions.find(x=>x.id===id); if(!s) return;
+  currentFilingId=id;
   go('filing');
   document.getElementById('crumbCur').textContent=s.title;
   const d=FILING_DASH[id]||{agents:[],pending:[],attention:[]};
@@ -847,26 +975,175 @@ function genericFormHtml(s,f){
   const foot=`<div class="fnote" style="margin-bottom:18px">Field-level rendering in this prototype is built out for the BE-11 form family. This ${f.code} form is tracked here with its identification and status; open it in the Operator to work the underlying data.</div>`;
   return `<div class="formdoc">${band}${body}</div>${foot}`;
 }
-function openForm(reportId, formId){
+/* ---- Form-level overview (mirrors the Project dashboard, tailored to one form) ---- */
+const FORM_FIN_FIELDS=['netIncome','sales','assets','ppe','liabilities','ownersEq','employees','comp'];
+function formCompleteness(f){
+  const filled=FORM_FIN_FIELDS.filter(k=>f[k]!=null).length;
+  return {filled,total:FORM_FIN_FIELDS.length,pct:Math.round(filled/FORM_FIN_FIELDS.length*100)};
+}
+function formReadiness(f){
+  if(f.status==='done') return 100;
+  if((f.code||'').indexOf('BE-11')===0) return formCompleteness(f).pct;
+  return f.status==='run'?55:(f.status==='block'?35:0);
+}
+/* Small self-contained key/value row for the overview cards. */
+function ovRow(label,val){ return `<div class="ov-row"><span class="ov-k">${label}</span><span class="ov-v">${val==null||val===''?'—':val}</span></div>`; }
+/* Overview CTAs are context-driven so they work from either entry point. */
+function currentFormUpload(){
+  const f=currentFormCtx&&currentFormCtx.f;
+  if(f) openUploadModal({field:'financial data',entity:f.entity,code:f.code});
+  else openUploadModal();
+}
+function currentFormOperatorAct(){
+  const op=currentFormCtx&&currentFormCtx.operator;
+  if(op&&typeof op.act==='function') op.act();
+}
+function formOverviewHtml(s, f, opt){
+  opt=opt||{};
+  const isBe11=(f.code||'').indexOf('BE-11')===0;
+  const st=FORM_STATUS[f.status]||FORM_STATUS.todo;
+  const comp=formCompleteness(f);
+  const readiness=formReadiness(f);
+  const missing=isBe11 && f.status!=='done' && comp.filled<comp.total;
+  // ---- stat strip (4) ----
+  const confMap={high:['High','g'],medium:['Medium','a'],low:['Low','d']};
+  const conf=f.conf?confMap[f.conf]||[f.conf,'']:['—',''];
+  const attnLabel=(f.note&&f.status!=='done')?(f.status==='block'?'1 blocker':'1 item'):'None';
+  const attnCls=(f.note&&f.status!=='done')?(f.status==='block'?'d':'a'):'g';
+  const strip=`<div class="fd-strip">
+    <div class="card fd-stat"><div class="k">Readiness</div><div class="v ${readiness===100?'g':'b'}">${readiness}%</div></div>
+    <div class="card fd-stat"><div class="k">Status</div><div class="v" style="font-size:16px"><span class="pill ${st.cls} dotp">${st.label}</span></div></div>
+    <div class="card fd-stat"><div class="k">Confidence</div><div class="v ${conf[1]}" style="font-size:16px">${conf[0]}</div></div>
+    <div class="card fd-stat"><div class="k">Attention</div><div class="v ${attnCls}" style="font-size:16px">${attnLabel}</div></div>
+  </div>`;
+  // ---- needs-you band ----
+  let needsInner;
+  if(f.status==='done'){
+    needsInner=`<div class="nu-clear">${IC.check}This form is populated, reconciled, and ready for the filing package.</div>`;
+  } else if(f.note){
+    const sev=f.status==='block'?'block':'warn';
+    const title=f.status==='block'?'Blocked — resolve to continue':(missing?'Awaiting source data':'Needs your review');
+    const cta=missing
+      ?`<button class="prow-cta solid" onclick="currentFormUpload()">Upload data</button>`
+      :(opt.operator?`<button class="prow-cta" onclick="currentFormOperatorAct()">Open in Operator</button>`:'');
+    const icon=sev==='block'
+      ?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>'
+      :'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>';
+    needsInner=`<div class="prow"><div class="pi ${sev}">${icon}</div><div class="pb"><div class="pt">${title}</div><div class="pm">${f.note}</div></div>${cta}</div>`;
+  } else {
+    needsInner=`<div class="nu-clear">${IC.check}On track — nothing needs your confirmation on this form right now.</div>`;
+  }
+  const hasBlock=f.status==='block'&&f.note;
+  const needsCount=(f.note&&f.status!=='done')?1:0;
+  const nuChip=hasBlock?['var(--danger-bg)','var(--danger)']:(needsCount?['var(--accent-weak)','var(--accent)']:['var(--surface-3)','var(--text-2)']);
+  const needsCard=`<div class="card nu-card${hasBlock?' has-block':''}"><div class="fd-card-h">Needs you${needsCount?`<span class="wq-count" style="background:${nuChip[0]};color:${nuChip[1]}">${needsCount}</span>`:''}</div>${needsInner}</div>`;
+  // ---- left column ----
+  let leftCards='';
+  if(isBe11){
+    const snapshot=`<div class="card" style="margin-bottom:20px"><div class="fd-card-h">Financial snapshot</div>
+      <div class="fsummary" style="border-bottom:none">
+        <div class="fsum"><div class="k">Sales / gross op. rev.</div><div class="v">${shortMoney(f.sales)}</div></div>
+        <div class="fsum"><div class="k">Net income (loss)</div><div class="v">${shortMoney(f.netIncome)}</div></div>
+        <div class="fsum"><div class="k">Total assets</div><div class="v">${shortMoney(f.assets)}</div></div>
+        <div class="fsum"><div class="k">Employees</div><div class="v">${f.employees!=null?_fmt(f.employees):'—'}</div></div>
+      </div></div>`;
+    const own=(f.ownEquity!=null)?`Equity ${f.ownEquity.toFixed(1)}% · Voting ${f.ownVoting.toFixed(1)}%`:null;
+    const details=`<div class="card" style="margin-bottom:20px"><div class="fd-card-h">Form details</div>
+      ${ovRow('Reporting entity',f.entity)}
+      ${ovRow('Form class',f.code)}
+      ${ovRow('Country of location',f.country)}
+      ${ovRow('City',f.city)}
+      ${ovRow('Fiscal year end',f.fyEnd)}
+      ${f.code!=='BE-11A'?ovRow('U.S. Reporter ownership',own):''}
+      ${ovRow('Size test',f.over300?'Assets, sales, or net income > $300M':'≤ $300M')}
+    </div>`;
+    leftCards=snapshot+details;
+  } else {
+    leftCards=`<div class="card" style="margin-bottom:20px"><div class="fd-card-h">Form details</div>
+      ${ovRow('Reporting entity',f.entity)}
+      ${ovRow('Form type',f.code)}
+      ${ovRow('Reporting period',s?s.sub:'—')}
+      ${ovRow('Status',`<span class="pill ${st.cls}">${st.label}</span>`)}
+    </div>`;
+  }
+  const provCard=`<div class="card"><div class="fd-card-h">Data &amp; provenance</div>
+    ${ovRow('Primary source',f.src||(f.status==='todo'?'Not yet sourced':'Awaiting data'))}
+    ${ovRow('Confidence',conf[0])}
+    ${ovRow('Prepared by',f.agent?`<span class="pill blue">${f.agent}</span>`:'—')}
+    ${ovRow('Data completeness',isBe11?`${comp.filled} of ${comp.total} fields`:(f.status==='done'?'Complete':'In progress'))}
+  </div>`;
+  // ---- right column ----
+  // form-level checklist derived from status + completeness
+  const finState=f.status==='done'?'done':(missing?'current':((isBe11&&comp.pct===100)?'done':(f.status==='run'?'current':'pending')));
+  const valState=f.status==='done'?'done':(finState==='done'?'current':'pending');
+  const revState=f.status==='done'?'done':'pending';
+  const stepNode=(state,label,meta)=>`<li class="snode ${state}"><span class="smark">${state==='done'?IC.check:''}</span><div class="srow"><div class="slabel">${label}</div><div class="smeta">${meta}</div></div></li>`;
+  const progressCard=`<div class="card" style="margin-bottom:20px"><div class="fd-card-h">Form progress</div>
+    <div class="fd-life"><ol>
+      ${stepNode('done','Identification','Entity, country &amp; classification')}
+      ${stepNode(finState,'Financial data',isBe11?`${comp.filled}/${comp.total} fields populated`:'Line items mapped')}
+      ${stepNode(valState,'Validation','Cross-checks &amp; variance')}
+      ${stepNode(revState,'Review &amp; approval','Rolled into the filing package')}
+    </ol></div>
+  </div>`;
+  const peopleRows=(s&&s.people?s.people:[]).map(p=>{
+    const roles={dr:'Preparer',sc:'Reviewer-approver · Controller',jd:'Preparer',mk:'Data owner · Germany',tr:'Data owner · Brazil'};
+    return `<div class="fd-person">${av(p)}<div><div class="pn">${PEOPLE[p].name}</div><div class="pr">${roles[p]||''}</div></div></div>`;
+  }).join('')||`<div class="empty-mini">No people assigned yet.</div>`;
+  const peopleCard=`<div class="card"><div class="fd-card-h">People involved</div>${peopleRows}</div>`;
+  return `${strip}${needsCard}<div class="fd-cols"><div>${leftCards}</div><div>${progressCard}${keyDatesCard(s)}${peopleCard}</div></div>`;
+}
+function renderFormPage(){
+  const ctx=currentFormCtx; if(!ctx) return;
+  const {f,s}=ctx;
+  const st=FORM_STATUS[f.status]||FORM_STATUS.todo;
+  document.getElementById('crumbCur').innerHTML=ctx.crumbHtml;
+  document.getElementById('backbtn').onclick=ctx.back;
+  const opBtn=ctx.operator?`<button class="btn primary" onclick="currentFormOperatorAct()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M4 5h16v11H8l-4 4z"/></svg>${ctx.operator.label}</button>`:'';
+  const head=`<div class="fd-head">
+    <div class="fd-mark">${f.code}</div>
+    <div class="fd-title-wrap"><div class="fd-title">${f.entity}</div><div class="fd-sub">${f.code} · part of ${ctx.reportName}</div></div>
+    <div class="fd-actions">
+      <span class="pill ${st.cls} dotp">${st.label}</span>
+      ${f.agent?`<span class="pill blue">${f.agent}</span>`:''}
+      ${opBtn}
+    </div>
+  </div>`;
+  const tab=currentFormTab==='form'?'form':'overview';
+  const tabs=`<div class="rp-tabs form-tabs">
+    <button class="rp-tab${tab==='overview'?' active':''}" onclick="formTab('overview')">Overview</button>
+    <button class="rp-tab${tab==='form'?' active':''}" onclick="formTab('form')">${IC.doc}<span>Form</span></button>
+  </div>`;
+  let body;
+  if(tab==='form'){
+    body=(f.code&&f.code.indexOf('BE-11')===0)?be11FormHtml(s,f):genericFormHtml(s,f);
+  } else {
+    body=formOverviewHtml(s,f,{operator:!!ctx.operator});
+  }
+  document.getElementById('formPage').innerHTML=head+tabs+`<div class="form-tab-body">${body}</div>`;
+  document.getElementById('view-form').scrollTop=0;
+}
+function formTab(tab){
+  currentFormTab=(tab==='form')?'form':'overview';
+  renderFormPage();
+  if(currentFormCtx&&currentFormCtx.deepLink) syncUrl(true);
+}
+/* Open a form from a Project dashboard (session-backed, deep-linkable). */
+function openForm(reportId, formId, opts){
   const s=sessions.find(x=>x.id===reportId);
   const all=expandForms(reportId);
   const f=all&&all.find(x=>x.id===formId);
   if(!f){ showToast('Form not available'); return; }
+  currentFormReportId=reportId; currentFormId=formId;
+  currentFormTab=(opts&&opts.tab==='form')?'form':'overview';
+  currentFormCtx={
+    f, s, reportName:s?s.title:'report', deepLink:true,
+    crumbHtml:`<span style="cursor:pointer;color:var(--text-3)" onclick="openFiling('${reportId}')">${s?s.title:reportId}</span> <span style="color:var(--text-3)">›</span> ${f.code} · ${f.entity}`,
+    back:()=>openFiling(reportId),
+    operator:{label:'Open in Operator',act:()=>openSessionById(reportId)},
+  };
   go('form');
-  const st=FORM_STATUS[f.status]||FORM_STATUS.todo;
-  const cur=document.getElementById('crumbCur');
-  cur.innerHTML=`<span style="cursor:pointer;color:var(--text-3)" onclick="openFiling('${reportId}')">${s?s.title:reportId}</span> <span style="color:var(--text-3)">›</span> ${f.code} · ${f.entity}`;
-  document.getElementById('backbtn').onclick=()=>openFiling(reportId);
-  const topbar=`<div class="form-topbar">
-    <div><div class="tb-title">${f.entity}</div><div class="tb-sub">${f.code} · part of ${s?s.title:'report'}</div></div>
-    <div class="sp"></div>
-    <span class="pill ${st.cls} dotp">${st.label}</span>
-    ${f.agent?`<span class="pill blue">${f.agent}</span>`:''}
-    <button class="btn primary" onclick="openSessionById('${reportId}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M4 5h16v11H8l-4 4z"/></svg>Open in Operator</button>
-  </div>`;
-  const paper=(f.code&&f.code.indexOf('BE-11')===0)?be11FormHtml(s,f):genericFormHtml(s,f);
-  document.getElementById('formPage').innerHTML=topbar+paper;
-  document.getElementById('view-form').scrollTop=0;
+  renderFormPage();
 }
 
 /* ---------- Source data + manual upload ---------- */
@@ -947,30 +1224,8 @@ function renderOperator(){
   renderOpPrompts();
   renderOpLib(opLibTab);
   setTimeout(()=>moveOpLibInk(),20);
-  // The Operator home is owned by React (<OperatorHome/>); the innerHTML
-  // renderers above no-op when their mount points are absent. Notify React so
-  // it can re-pull fixtures whenever the engine re-enters home.
-  try{ window.dispatchEvent(new CustomEvent('op:home')); }catch(e){}
 }
 function renderHome(){ renderOperator(); } /* alias for legacy callers */
-/* Structured home fixtures for the React <OperatorHome/> layer. Keeps the
-   engine the single source of truth for data + actions; React owns markup. */
-function opHomeData(){
-  const conversations=sessions.slice().sort((a,b)=>a.updatedSort-b.updatedSort).map(s=>{
-    const sm=STATUS_META[s.status]||{label:s.status,cls:'grey'};
-    return {icon:IC.chatDot,title:s.title,badge:{label:sm.label,cls:sm.cls},sub:s.sub,time:s.updated,act:{fn:'session',arg:s.id,arg2:0}};
-  });
-  const artFlat=[]; Object.keys(artifacts).forEach(k=>artifacts[k].forEach((a,idx)=>artFlat.push({...a,group:k,idx})));
-  const artifactRows=artFlat.slice(0,8).map(a=>({icon:IC[a.ic],title:a.t,badge:null,sub:a.m,time:a.time,act:{fn:'artifact',arg:a.group,arg2:a.idx}}));
-  const scheduleRows=schedules.map((s,idx)=>({icon:IC.sched,title:s.n,badge:{label:s.on?'On':'Off',cls:s.on?'green':'grey'},sub:`${s.d} · last run ${s.runs[0].time.toLowerCase()}`,time:s.runs[0].time,act:{fn:'schedule',arg:idx,arg2:0}}));
-  return {
-    quick:OP_QUICK.map((key,i)=>({key,code:OB_TYPES[key].code,primary:i===0})),
-    more:OP_QUICK_MORE.map(key=>({key,code:OB_TYPES[key].code,short:OB_TYPES[key].short})),
-    prompts:['file','approve','duesoon','cmpreports'].map(k=>{const s=STARTERS.find(x=>x.key===k)!; return {key:s.key,label:s.t};}),
-    lib:{conversations,artifacts:artifactRows,schedules:scheduleRows},
-    icons:{spark:OB_ICONS.spark,op:IC.op,chev:IC.chev},
-  };
-}
 const OP_QUICK=['be11','be577','be125'];
 const OP_QUICK_MORE=['be185','abs1','aies','qfr9'];
 function renderOpQuick(){
@@ -1032,61 +1287,31 @@ function operatorLaunch(txt,type){
   comp.insertAdjacentElement('afterend', think);
   requestAnimationFrame(()=>think.classList.add('show'));
   setTimeout(()=>{
-    // Lift the operator token out of the send button (a ~36px square) so the
-    // morph into the round FAB reads as one continuous element. Capture its box
-    // BEFORE navigating away from home.
-    const seedEl=document.getElementById('opSend')||comp;
-    const a=seedEl.getBoundingClientRect();
-    pendingSeed=[
-      {who:'user',text:txt},
-      {who:'op',text:`On it — I've opened your <strong>${OB_TYPES[type].code}</strong>. I'll walk you through Setup first. Ask me anything here as we go.`,ev:'Recognized a “start a report” intent'}
-    ];
-    const ghost=document.createElement('div'); ghost.className='op-ghost'; ghost.innerHTML=IC.op;
-    ghost.style.left=a.left+'px'; ghost.style.top=a.top+'px'; ghost.style.width=a.width+'px'; ghost.style.height=a.height+'px';
-    ghost.style.borderRadius='11px';
-    document.body.appendChild(ghost);
-    think.remove();
-    // Reveal the report underneath the ghost, holding the real FAB hidden until landing.
-    document.body.classList.add('op-launching','fab-arriving');
-    openReport(type, pendingSeed);
-    opMorphToFab(ghost);
+    opMorphToFab(comp, ()=>{
+      think.remove();
+      pendingSeed=[
+        {who:'user',text:txt},
+        {who:'op',text:`On it — I've opened your <strong>${OB_TYPES[type].code}</strong>. I'll walk you through Setup first. Ask me anything here as we go.`,ev:'Recognized a “start a report” intent'}
+      ];
+      openReport(type, pendingSeed);
+      setTimeout(openFabSeeded, 480);
+    });
   }, 1150);
 }
-/* Ghost flies send-button → FAB: morphs the square token into the 56px circle,
-   lands, then the real FAB pops in with a halo and the panel opens seeded. */
-function opMorphToFab(ghost){
+function opMorphToFab(fromEl, done){
   const fab=document.getElementById('chatFab');
-  const finish=()=>{
-    ghost.remove();
-    document.body.classList.remove('fab-arriving');
-    if(fab){
-      const b=fab.getBoundingClientRect();
-      fab.classList.add('fab-pop');
-      setTimeout(()=>fab.classList.remove('fab-pop'),520);
-      const halo=document.createElement('div'); halo.className='fab-halo';
-      const s=Math.max(b.width,b.height);
-      halo.style.left=(b.left+b.width/2-s/2)+'px'; halo.style.top=(b.top+b.height/2-s/2)+'px';
-      halo.style.width=s+'px'; halo.style.height=s+'px';
-      document.body.appendChild(halo);
-      setTimeout(()=>halo.remove(),640);
-    }
-    openFabSeeded();
-    document.body.classList.remove('op-launching');
-  };
-  if(!fab){ finish(); return; }
-  const a=ghost.getBoundingClientRect();
+  if(!fab){ if(done) done(); return; }
+  const a=fromEl.getBoundingClientRect(), b=fab.getBoundingClientRect();
+  const ghost=document.createElement('div'); ghost.className='op-ghost'; ghost.innerHTML=IC.op;
+  ghost.style.left=a.left+'px'; ghost.style.top=a.top+'px'; ghost.style.width=a.width+'px'; ghost.style.height=a.height+'px';
+  document.body.appendChild(ghost);
   requestAnimationFrame(()=>{
-    const b=fab.getBoundingClientRect();
-    // translate centre→centre, then scale the square token up to the FAB size.
-    // transform-origin is centre, so the centres stay locked (no top-left drift).
     const tx=(b.left+b.width/2)-(a.left+a.width/2);
     const ty=(b.top+b.height/2)-(a.top+a.height/2);
-    const sc=b.width/a.width;
-    ghost.style.transform=`translate(${tx}px,${ty}px) scale(${sc})`;
-    ghost.style.borderRadius='50%';
-    ghost.style.boxShadow='var(--shadow-accent),0 8px 24px rgba(0,44,82,.28)';
+    ghost.style.transform=`translate(${tx}px,${ty}px) scale(.05)`;
+    ghost.style.opacity='0'; ghost.style.borderRadius='50%';
   });
-  setTimeout(finish, 600);
+  setTimeout(()=>{ ghost.remove(); if(done) done(); }, 640);
 }
 
 /* ---------- Operator library (Conversations / Artifacts / Schedules) ---------- */
@@ -1097,6 +1322,7 @@ function opLib(tab){
   moveOpLibInk();
   renderOpLib(tab);
   const b=document.getElementById('opLibBody'); if(b){ b.classList.remove('enter'); void b.offsetWidth; b.classList.add('enter'); }
+  syncUrl();
 }
 function moveOpLibInk(){
   const ink=document.getElementById('opLibInk'); const act=document.querySelector('.op-lib-tab.active'); if(!ink||!act) return;
@@ -1130,8 +1356,9 @@ function renderOpLib(tab){
 /* ================================================================
    DASHBOARD — portfolio view
 ================================================================*/
-function renderDashboard(){
-  const el=document.getElementById('dashWrap'); if(!el) return;
+/* Portfolio overview (stats + work queue + deadlines + agent activity), now shown
+   at the top of the merged Projects page rather than a separate Portfolio view. */
+function portfolioSummaryHtml(){
   const active=sessions.filter(s=>s.status!=='done');
   const needs=sessions.filter(s=>s.status==='needs_you');
   const waiting=sessions.filter(s=>s.status==='waiting');
@@ -1169,11 +1396,7 @@ function renderDashboard(){
     {ic:'shield',t:'Readiness sweep — 0 blockers',m:'Across 3 active reports',time:'1h ago'},
   ].map(a=>`<div class="dash-feed-row"><span class="dash-feed-ic">${OB_ICONS[a.ic]}</span><div class="dash-feed-txt"><div class="dash-feed-h">${a.t}</div><div class="dash-feed-m">${a.m}</div></div><span class="dash-feed-time">${a.time}</span></div>`).join('');
 
-  el.innerHTML=`
-    <div class="dash-head">
-      <div><h2 class="title">Portfolio</h2><p class="subtitle">Wednesday, 1 July 2026 · ${active.length} active reports · ${needs.length} awaiting your approval</p></div>
-      <button class="btn primary" onclick="toggleStartMenu(event)">${OB_ICONS.setup}Start a report</button>
-    </div>
+  return `
     <div class="dash-stats">
       ${stat('Active reports',active.length,'in flight now','','go(\'filings\')')}
       ${stat('Awaiting approval',needs.length,'need your sign-off','accent','go(\'filings\')')}
@@ -1348,7 +1571,7 @@ const artifacts={
   ],
 };
 let artTab='Projects';
-function setArt(tab,btn){ artTab=tab; document.querySelectorAll('#artSeg button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderArt(); }
+function setArt(tab,btn){ artTab=tab; document.querySelectorAll('#artSeg button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderArt(); syncUrl(); }
 function renderArt(){
   if(artTab==='Forms'){ renderArtForms(); return; }
   const l=artifacts[artTab];
@@ -2109,7 +2332,7 @@ function renderMermaidBlocks(){
   try{ mermaid.run({ nodes, suppressErrors:true }); }catch(e){ nodes.forEach(n=>n.classList.add('mmd-fallback')); }
 }
 function scrollDocAnchor(anchor){ if(!anchor)return; const el=document.getElementById(anchor); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }
-function openDoc(key,anchor){ go('docs'); renderDoc(key,anchor||''); }
+function openDoc(key,anchor){ currentDocKey=key; go('docs'); renderDoc(key,anchor||''); syncUrl(); }
 /* =============================================================
    ONBOARD / STEP 0 — agent-driven report setup
    Principles: recordable · evidence-backed · you approve · you confirm
@@ -2140,6 +2363,8 @@ const OB_ICONS={
   send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4 12l16-7-7 16-2.5-6.5z"/></svg>',
   info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg>',
   edit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5l5 5M4 20l1-4L16 5l3 3L8 19z"/></svg>',
+  eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 9a6 6 0 1112 0c0 5 2 6 2 6H4s2-1 2-6z"/><path d="M10 20a2 2 0 004 0"/></svg>',
 };
 const OB_TYPES={
   be11:{code:'BE-11', short:'Direct Investment Abroad', full:'Annual Survey of U.S. Direct Investment Abroad',
@@ -2168,6 +2393,16 @@ const OB_SOURCES=[
   {id:'tb', name:'Trial balance', found:true, evSys:'NetSuite · US Consolidated', evDoc:'TB_2025-12-31_final.xlsx · 96% match'},
   {id:'gl', name:'General ledger', found:true, evSys:'NetSuite · GL export', evDoc:'GL_FY2025_full.csv · 94% match'},
   {id:'pr', name:'Previous filed report', found:false},
+];
+/* Sample lines shown in the Trial Balance preview (values in $ thousands, matching fmtRev). */
+const TB_PREVIEW=[
+  {acct:'1000 · Cash & equivalents', bal:412000},
+  {acct:'1200 · Accounts receivable', bal:286500},
+  {acct:'1500 · Total assets', bal:4263000},
+  {acct:'4000 · Net sales / operating revenue', bal:3143800},
+  {acct:'5000 · Cost of goods sold', bal:-1884200},
+  {acct:'6000 · Operating expenses', bal:-742100},
+  {acct:'8000 · Net income (loss)', bal:408300},
 ];
 /* Financial figures are in $ thousands (value/1000 = $M), matching fmtRev().
    BEA size tests: BE-11B/C at $60M; BE-11D short form at $25M–$60M for newly
@@ -2198,12 +2433,23 @@ function defaultReadiness(r){ const due=new Date(r.due); const d=new Date(due.ge
 /* ================================================================
    REPORT ENGINE — tab-based lifecycle (Setup → Planning → Data collection → Review & approve → File)
 ================================================================*/
+/* Lifecycle stages that live on the project page (Setup is now a separate
+   full-screen wizard used to *start* a project — see the setup wizard flow). */
 const RP_TABS=[
-  {key:'setup', label:'Setup'},
   {key:'scoping', label:'Planning'},
   {key:'mapping', label:'Data collection'},
   {key:'review', label:'Review & approve', stub:true},
   {key:'file', label:'File', stub:true},
+];
+/* Horizontal tab bar on the project page, in display order. Overview & Activity
+   are always-available views that bookend the lifecycle stages. */
+const RP_TABBAR=[
+  {key:'overview', label:'Overview'},
+  {key:'scoping', label:'Planning'},
+  {key:'mapping', label:'Data collection'},
+  {key:'review', label:'Review & approve', stub:true},
+  {key:'file', label:'File', stub:true},
+  {key:'activity', label:'Activity'},
 ];
 const FORM_OPTIONS=['BE-11A','BE-11B','BE-11D','Claim for Not Filing','Exempt'];
 /* Which reporting "area" each affiliate's country rolls up to — drives the
@@ -2225,6 +2471,19 @@ const PLAN_AREAS=[
     review:{name:'Regional Controller — APAC', people:[{i:'PN',c:'pn',n:'Priya Nair'}]},
     approve:{name:'Corporate Controllership', people:[{i:'SC',c:'sc',n:'Sarah Chen'}]}},
 ];
+/* Global people groups for the whole report — chosen once per report, not per
+   region. The reviewer tier only participates when two-level approval is set. */
+const PLAN_GLOBAL={
+  prep:{name:'Preparers', people:[{i:'JR',c:'dr',n:'Julie Ruiz'},{i:'MK',c:'mk',n:'Maria Keller'},{i:'WL',c:'wl',n:'Wei Lin'}]},
+  review:{name:'Regional reviewers', people:[{i:'PN',c:'pn',n:'Priya Nair'},{i:'JD',c:'jd',n:'James Doyle'}]},
+  approve:{name:'Filing approver', people:[{i:'SC',c:'sc',n:'Sarah Chen'}]},
+};
+/* How assertively the agent chases outstanding tasks before they hold up filing. */
+const REMINDER_OPTS=[
+  {key:'gentle', name:'Gentle', desc:'A single reminder once a task slips past its due date. Best for seasoned teams that rarely miss a deadline.', cadence:'1 nudge · after due'},
+  {key:'standard', name:'Standard', desc:'A reminder on the due date, then a daily follow-up while the task stays open. A balanced default for most filings.', cadence:'Daily · from due', rec:true},
+  {key:'assertive', name:'Assertive', desc:'An early heads-up before the due date, twice-daily follow-ups, and auto-escalation to the approver after 48h overdue.', cadence:'2× daily · + escalation'},
+];
 /* Roster the user can pick from when changing who's assigned to a group. */
 const ROSTER=[
   {i:'JR',c:'dr',n:'Julie Ruiz'},
@@ -2239,6 +2498,8 @@ const ROSTER=[
 let RPT=null;
 /* Per-report copy of the area/group assignments so edits are scoped to this report. */
 function planAreas(){ if(!RPT.planPeople) RPT.planPeople=JSON.parse(JSON.stringify(PLAN_AREAS)); return RPT.planPeople; }
+/* Per-report copy of the global (report-wide) people groups. */
+function planGlobal(){ if(!RPT.planGlobal) RPT.planGlobal=JSON.parse(JSON.stringify(PLAN_GLOBAL)); return RPT.planGlobal; }
 
 function suggestForm(e){
   if(e.reporter) return {form:'BE-11A', reason:`U.S. Reporter — the consolidated domestic parent always files a BE-11A.`};
@@ -2270,38 +2531,96 @@ function masterFields(){ return [
   {id:'f8',name:'FY2025 statements — Nordic Ventures',master:'MF.FS.NORDIC',from:'—',src:null,conf:null,status:'gap'},
 ]; }
 
-function openReport(type, seed){
+/* Sets the header on both the setup wizard and the project page so either surface
+   shows the right report identity. */
+function setReportHeader(r){
+  const setMark=(id)=>{ const el=document.getElementById(id); if(el){ el.textContent=r.code; el.className='rp-mark'+(r.alt?' alt':''); } };
+  const setText=(id,t)=>{ const el=document.getElementById(id); if(el) el.textContent=t; };
+  setMark('rpMark'); setMark('setupMark');
+  setText('rpTitle',`${r.code} Project`);
+  setText('rpSub',`${r.full} · ${r.agency}`);
+  setText('setupTitle',`Start a ${r.code} project`);
+  setText('setupSub',`${r.full} · ${r.agency}`);
+}
+/* Opens a report. By default this launches the full-screen Setup wizard used to
+   *start* a project; when the setup wizard completes the user enters the tabbed
+   project page. Pass {resume:true} to skip the wizard and open the project page
+   directly with setup treated as already complete (used when opening an existing
+   project from a list). */
+function openReport(type, seed, opts){
   const r=OB_TYPES[type]; if(!r) return;
   obClock=0;
   RPT={
-    type, full:(type==='be11'), tab:'setup',
+    type, full:(type==='be11'), tab:'overview',
     unlocked:{setup:true,scoping:false,mapping:false,review:false,file:false},
     uploaded:false, sources:[], staged:[],
     hubScanning:false, hubScanned:false, hubConfirmed:false,
+    hubPreview:{}, priorFiling:null,
     scanRun:false, scanning:false, entitiesApproved:false, editEntities:false,
     setupRun:false, setupProposing:false, setupAccepted:false,
     readiness:defaultReadiness(r), readinessSet:false, setupDone:false,
-    scopeRun:false, scoping:false, scopeApproved:false, forms:{}, scopeDone:false, approval:2,
+    scopeRun:false, scoping:false, scopeApproved:false, forms:{}, scopeDone:false, approval:2, reminders:'standard',
+    connected:false, connecting:false, pullDone:false, connReused:null, connFilePhase:'idle', connFileRead:false,
+    colBy:'agent', colOverrides:{}, provTasks:{},
+    /* Data collection surfaces (ported from the Agent-First CRR flow):
+       source-data coverage, per-entity field grid, data responsibility, triage. */
+    dcForm:null, dcSourcesView:'source', dcRefreshed:false,
+    dcChoices:{}, dcConfirmed:{}, dcAssignForm:{}, dcAssignField:{},
+    dcTriage:{}, dcFilter:{collection:'all',status:'all',q:''},
+    dcOpen:{}, dcAssignOpen:{}, dcApplyOpen:null,
     mapRun:false, mapping:false, remapping:false, validated:false, mapDone:false,
     valRun:false, validating:false, valApproved:false, valDone:false,
     reviewed:{}, reviewDone:false, formOpen:null,
+    /* Final approval / judgment ledger (ported from the Agent-First CRR flow):
+       sign on a complete ledger, with recorded overrides and send-backs. */
+    finalApproved:false, finalOverride:null, finalSentBack:null, finalMode:'idle',
     signed:false, filed:false, fileDone:false,
     entities:OB_ENTITIES.map(e=>({...e})),
     fields:masterFields(),
     conv:seed||[], timeline:[], recordOpen:false,
   };
   RPT.entities.forEach(e=>{ const s=suggestForm(e); e.sugForm=s.form; e.form=s.form; e.reason=s.reason; e.review=!!s.review; });
-  document.getElementById('rpMark').textContent=r.code;
-  document.getElementById('rpMark').className='rp-mark'+(r.alt?' alt':'');
-  document.getElementById('rpTitle').textContent=`${r.code} Project`;
-  document.getElementById('rpSub').textContent=`${r.full} · ${r.agency}`;
+  setReportHeader(r);
   document.getElementById('rpRecord')?.classList.remove('open');
   document.getElementById('rpRecBtn')?.classList.remove('open');
-  rptLog('agent','Report opened',`${r.code} · Setup → Planning → Data collection → Review & approve → File`);
-  go('report');
-  scanOverlay(1050);
-  renderReport();
+  // Fresh FAB per report — starts closed and reseeds for this report's context.
+  fabSeeded=false; const _fb=document.getElementById('fabBody'); if(_fb) _fb.innerHTML=''; closeFab();
+  if(opts && opts.resume){
+    // Treat setup as already complete — jump straight into the tabbed project page.
+    RPT.hubScanned=true; RPT.hubConfirmed=true; RPT.uploaded=true;
+    RPT.priorFiling=prevFilingName();
+    RPT.sources=['Entity List · Data Hub', `Trial Balance ${r.period} · Data Hub`, RPT.priorFiling];
+    RPT.scanRun=true; RPT.entitiesApproved=true;
+    RPT.setupRun=true; RPT.setupAccepted=true; RPT.readinessSet=true; RPT.setupDone=true;
+    RPT.unlocked.scoping=true;
+    RPT.tab='overview';
+    rptLog('agent','Report opened',`${r.code} · Planning → Data collection → Review & approve → File`);
+    go('report');
+    scanOverlay(1050);
+    renderReport();
+    return;
+  }
+  rptLog('agent','Setup started',`${r.code} · reading your source data to set up the project`);
+  go('setup');
+  renderSetupWizard();
   setTimeout(rptHubScan, 700);
+}
+/* Full-screen Setup wizard body — reuses the setup step flow (source discovery,
+   entity scan, filing setup) rendered as a single centered column. */
+function renderSetupWizard(){
+  if(!RPT) return;
+  renderRecord();
+  const body=document.getElementById('setupBody'); if(!body) return;
+  body.innerHTML=`<section class="rp-sec cur setup-sec"><div class="rp-sec-body">${setupTab()}</div></section>`;
+  updateFabCtx();
+}
+/* Setup complete → enter the tabbed project page at Overview. */
+function enterProject(){
+  RPT.tab='overview';
+  go('report');
+  scanOverlay(900);
+  renderReport();
+  syncUrl();
 }
 function scanOverlay(ms){ const ov=document.getElementById('rpScanOverlay'); if(!ov) return; ov.classList.remove('show'); void ov.offsetWidth; ov.classList.add('show'); setTimeout(()=>ov.classList.remove('show'), ms||AGENT_RUN_MS); }
 
@@ -2323,6 +2642,8 @@ const STAGE_TODO={
 const LOCK_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>';
 function stageBody(key){
   if(!RPT.unlocked[key]){
+    // A form opened from the Overview can be viewed even before Review is reached.
+    if(key==='review' && RPT.full && RPT.formOpen!=null) return reviewFormView(RPT.formOpen);
     const idx=RP_TABS.findIndex(x=>x.key===key); const prev=RP_TABS[idx-1];
     return `<div class="rp-locked">${LOCK_IC}<div><div class="rp-locked-h">Opens after ${prev?prev.label:'the previous step'}</div><div class="rp-locked-m">Finish the step above and this stage unlocks automatically — every stage stays visible so you can see the whole lifecycle.</div></div></div>`;
   }
@@ -2335,6 +2656,7 @@ function stageBody(key){
 }
 function renderReport(){
   if(!RPT) return;
+  if(document.querySelector('.view.active')?.id==='view-setup'){ renderSetupWizard(); return; }
   renderRecord();
   const r=OB_TYPES[RPT.type];
   document.getElementById('rpDates').innerHTML=`
@@ -2349,8 +2671,9 @@ function renderReport(){
 }
 const LOCK_IC_SM='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>';
 function daysToDue(){ try{ const d=new Date(OB_TYPES[RPT.type].due); const ms=d-new Date(); return Math.max(0,Math.ceil(ms/86400000)); }catch(e){ return null; } }
-function renderKpis(){
-  const el=document.getElementById('rpKpis'); if(!el) return;
+/* The KPI strip (Entities / Forms filing / Open data gaps / Days to due) now lives
+   only on the Overview tab — the working lifecycle stages stay clean. */
+function rptKpisHtml(){
   const c=formCounts();
   const ents=RPT.scanRun?RPT.entities.length:'—';
   const filing=RPT.scopeRun?c.filing:'—';
@@ -2362,7 +2685,12 @@ function renderKpis(){
     {k:'Open data gaps',v:gaps,s:RPT.mapRun?(gapCount()?'need a source':'all closed'):'after mapping'},
     {k:'Days to due',v:dd==null?'—':dd,s:OB_TYPES[RPT.type].due},
   ];
-  el.innerHTML=kpis.map(x=>`<div class="rp-kpi"><div class="rp-kpi-v">${x.v}</div><div class="rp-kpi-k">${x.k}</div><div class="rp-kpi-s">${x.s}</div></div>`).join('');
+  return kpis.map(x=>`<div class="rp-kpi"><div class="rp-kpi-v">${x.v}</div><div class="rp-kpi-k">${x.k}</div><div class="rp-kpi-s">${x.s}</div></div>`).join('');
+}
+function renderKpis(){
+  const el=document.getElementById('rpKpis'); if(!el) return;
+  // The strip has moved into the Overview body — keep the top slot empty on every tab.
+  el.innerHTML=''; el.style.display='none';
 }
 function attnItems(){
   const items=[];
@@ -2393,45 +2721,135 @@ function renderAttn(){
   const rows=items.map(x=>`<button class="rp-attn-item ${x.done?'done':''}" onclick="rptGoTab('${x.k}')"><span class="rp-attn-dot">${x.done?OB_ICONS.check:''}</span><span class="rp-attn-t">${x.t}</span>${x.done?'':`<span class="rp-attn-go">${IC.chev}</span>`}</button>`).join('');
   el.innerHTML=`<div class="rp-attn-h">${OB_ICONS.info}What needs my attention</div><div class="rp-attn-list">${rows||'<div class="rp-attn-empty">Nothing right now.</div>'}</div>`;
 }
+const OV_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>';
+const ACT_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5 6 5-14L17 12h4"/></svg>';
+/* extra items pinned above/below the lifecycle rail, inside the same card */
+function railNavItem(key,label,icon){
+  const active=RPT.tab===key;
+  return `<button class="rp-life-item rp-life-nav${active?' active':''}" data-key="${key}" onclick="rptGoTab('${key}')"><span class="rp-life-node">${icon}</span><span class="rp-life-lab">${label}</span></button>`;
+}
 function renderTabs(){
   const el=document.getElementById('rpTabs'); if(!el) return;
-  const items=RP_TABS.map((t,i)=>{
-    const unlocked=RPT.unlocked[t.key];
-    const done=stageDone(t.key);
+  el.innerHTML=RP_TABBAR.map(t=>{
+    const stage=!isRailNav(t.key);
+    const unlocked=!stage||RPT.unlocked[t.key];
+    const done=stage&&stageDone(t.key);
     const active=RPT.tab===t.key;
-    const cls=['rp-life-item']; if(active)cls.push('active'); if(done)cls.push('done'); if(!unlocked)cls.push('locked');
-    const node=done?OB_ICONS.check:(unlocked?(i+1):LOCK_IC_SM);
-    const soon=(t.stub&&!RPT.full)?'<span class="rp-life-soon">soon</span>':'';
-    return `<button class="${cls.join(' ')}" data-key="${t.key}" onclick="rptGoTab('${t.key}')"><span class="rp-life-node">${node}</span><span class="rp-life-lab">${t.label}${soon}</span></button>`;
+    const cls=['rp-tab']; if(active)cls.push('active'); if(done)cls.push('done'); if(stage&&!unlocked)cls.push('locked');
+    const ind=done?`<span class="rp-tab-ck">${OB_ICONS.check}</span>`:(stage&&!unlocked?`<span class="rp-tab-ck lock">${LOCK_IC_SM}</span>`:'');
+    const soon=(t.stub&&!RPT.full)?'<span class="rp-tab-soon">soon</span>':'';
+    return `<button class="${cls.join(' ')}" data-key="${t.key}" onclick="rptGoTab('${t.key}')">${t.label}${soon}${ind}</button>`;
   }).join('');
-  el.innerHTML=`<div class="rp-life-h">Report lifecycle</div><div class="rp-life-list">${items}</div>`;
 }
-function moveTabInk(){ /* vertical lifecycle uses active styling, no sliding ink */ }
-function markRailActive(key){ document.querySelectorAll('.rp-life-item').forEach(b=>b.classList.toggle('active', b.dataset.key===key)); }
+function moveTabInk(){ /* horizontal tabs use active underline, no sliding ink */ }
+function markRailActive(key){ document.querySelectorAll('.rp-tab').forEach(b=>b.classList.toggle('active', b.dataset.key===key)); }
 /* single-section view: only the active lifecycle stage is shown */
 function renderSections(){
   const el=document.getElementById('rpBody'); if(!el) return;
+  if(isRailNav(RPT.tab)){
+    const isOv=RPT.tab==='overview';
+    const title=isOv?'Overview':'Activity';
+    const todo=isOv
+      ?'A snapshot of this report — readiness, what needs you, the forms in scope, and where it sits in the lifecycle.'
+      :'Every agent run, commit, and human decision recorded for this report, newest first.';
+    el.innerHTML=`<section class="rp-sec cur" id="sec-${RPT.tab}" key="${RPT.tab}">
+      <div class="rp-sec-head">
+        <div class="rp-sec-ix">${isOv?OV_IC:ACT_IC}</div>
+        <div class="rp-sec-htx"><div class="rp-sec-title">${title}</div><div class="rp-sec-todo">${todo}</div></div>
+      </div>
+      <div class="rp-sec-body">${isOv?rptOverviewHtml():rptActivityHtml()}</div>
+    </section>`;
+    return;
+  }
   const i=RP_TABS.findIndex(t=>t.key===RPT.tab); const t=RP_TABS[i<0?0:i]; if(!t) return;
   const unlocked=RPT.unlocked[t.key];
   const done=stageDone(t.key);
   const cls=['rp-sec','cur']; if(!unlocked)cls.push('locked'); if(done)cls.push('done');
   const badge=done?OB_ICONS.check:((i<0?0:i)+1);
   const ask=unlocked?`<button class="rp-ask" onclick="openFabFor('${t.key}')" title="Get help with ${HELP_LABEL[t.key]||'this step'} from the Operator">${OB_ICONS.spark||''}Help with ${HELP_LABEL[t.key]||'this step'}</button>`:'';
+  const reopen=done?`<button class="rp-reopen" onclick="rptReopenStage('${t.key}')" title="Reopen this step to make changes">${OB_ICONS.edit||''}Reopen</button>`:'';
   el.innerHTML=`<section class="${cls.join(' ')}" id="sec-${t.key}" key="${t.key}">
       <div class="rp-sec-head">
         <div class="rp-sec-ix">${badge}</div>
         <div class="rp-sec-htx"><div class="rp-sec-title">${t.label}</div><div class="rp-sec-todo">${STAGE_TODO[t.key]||''}</div></div>
-        ${ask}
+        ${reopen}${ask}
       </div>
       <div class="rp-sec-body">${stageBody(t.key)}</div>
     </section>`;
 }
 /* clicking a lifecycle anchor swaps to that section (no scrolling through all) */
-function rptGoTab(key){ if(!RPT.unlocked[key]){ markRailActive(RPT.tab); return; } RPT.tab=key; renderReport(); const el=document.getElementById('rpBody'); el?.scrollIntoView({behavior:'smooth',block:'nearest'}); updateFabCtx(); }
+function isRailNav(key){ return key==='overview'||key==='activity'; }
+function rptGoTab(key){ if(!isRailNav(key) && !RPT.unlocked[key]){ markRailActive(RPT.tab); return; } RPT.tab=key; renderReport(); const el=document.getElementById('rpBody'); el?.scrollIntoView({behavior:'smooth',block:'nearest'}); updateFabCtx(); syncUrl(); }
 /* progression helper — reveal the next stage */
 function rptGoto(key){ RPT.tab=key; renderReport(); const el=document.getElementById('rpBody'); requestAnimationFrame(()=>{ el?.scrollIntoView({behavior:'smooth',block:'nearest'}); }); }
+/* Reopen a completed lifecycle step so it can be changed again. Clears just that
+   step's completion/approval flags (its prior work — plan, mapping, reviews — stays
+   intact) so the step returns to its editable state and can be re-confirmed. */
+const REOPEN_LABEL={scoping:'Planning',mapping:'Data collection',review:'Review & approve',file:'File'};
+function rptReopenStage(key){
+  if(!RPT || !stageDone(key)) return;
+  if(key==='scoping'){ RPT.scopeApproved=false; RPT.scopeDone=false; }
+  else if(key==='mapping'){ RPT.valApproved=false; RPT.valDone=false; }
+  else if(key==='review'){ RPT.reviewDone=false; RPT.formOpen=null; }
+  else if(key==='file'){ RPT.filed=false; RPT.signed=false; RPT.fileDone=false; }
+  else return;
+  RPT.tab=key;
+  rptLog('human','You reopened '+(REOPEN_LABEL[key]||key),'Reopened to make changes');
+  showToast((REOPEN_LABEL[key]||'Step')+' reopened');
+  renderReport(); updateFabCtx(); syncUrl();
+}
 function bindRptSpy(){ /* single-section view — no scroll spy needed */ }
 function rptScrollSpy(){}
+
+/* ---------- Overview & Activity tabs (live inside the lifecycle card) ---------- */
+/* Furthest phase this report has reached, mapped onto the shared 8-step spine. */
+function rptPhaseIdx(){
+  if(RPT.filed) return 7;
+  if(RPT.reviewDone) return 6;
+  if(RPT.valDone) return 5;
+  if(RPT.mapDone) return 4;
+  if(RPT.scopeDone) return 2;
+  if(RPT.setupDone) return 1;
+  return 0;
+}
+/* Readiness = share of lifecycle milestones committed so far. */
+function rptReadinessPct(){
+  const flags=[RPT.setupDone,RPT.scopeDone,RPT.mapDone,RPT.valDone,RPT.reviewDone,RPT.filed];
+  return Math.round(flags.filter(Boolean).length/flags.length*100);
+}
+function rptOverviewHtml(){
+  const needs=attnItems().filter(a=>!a.done);
+  const totalEnt=RPT.entities.length;
+  const strip=`<div class="rp-kpis">${rptKpisHtml()}</div>`;
+  const needsRows=needs.map(x=>`<div class="prow"><div class="pi info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg></div>
+    <div class="pb"><div class="pt">${x.t}</div><div class="pm">${STAGE_TODO[x.k]||''}</div></div><button class="prow-cta solid" onclick="rptGoTab('${x.k}')">Open</button></div>`).join('');
+  const needsCard=`<div class="card nu-card"><div class="fd-card-h">Needs you${needs.length?`<span class="wq-count" style="background:var(--accent-weak);color:var(--accent)">${needs.length}</span>`:''}</div>${needs.length?needsRows:`<div class="nu-clear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>On track — nothing needs your confirmation right now.</div>`}</div>`;
+  let formRows;
+  if(RPT.scopeDone && totalEnt){
+    const ic=`<div class="form-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 13h6M9 17h6"/></svg></div>`;
+    formRows=RPT.entities.map(e=>{
+      const f=curForm(e); const fil=isFiling(f);
+      const pill=e.review?{label:'Needs decision',cls:'amber'}:(fil?{label:'Filing',cls:'blue'}:{label:'Not filing',cls:'grey'});
+      const body=`${ic}<div class="form-b"><div class="form-n">${e.name}</div><div class="form-m">${f} · ${e.country}</div></div><span class="pill ${pill.cls}">${pill.label}</span>`;
+      if(fil){
+        const nm=e.name.replace(/'/g,"\\'");
+        return `<div class="form-row clickable" onclick="openProjectForm('${nm}')" title="Open ${e.name}'s form">${body}<span class="chev">${OB_ICONS.arrow}</span></div>`;
+      }
+      return `<div class="form-row">${body}</div>`;
+    }).join('');
+  } else {
+    formRows=`<div class="empty-mini">Forms appear here once Planning is complete.</div>`;
+  }
+  const formsCard=`<div class="card"><div class="fd-card-h">Forms in the project<span class="wq-count" style="background:var(--surface-3);color:var(--text-2)">${RPT.scopeDone?totalEnt:'—'}</span></div>${formRows}</div>`;
+  return `${strip}${needsCard}${formsCard}`;
+}
+function rptActivityHtml(){
+  const dotIc={agent:OB_ICONS.setup,commit:OB_ICONS.check,human:OB_ICONS.human};
+  const rows=(RPT.timeline&&RPT.timeline.length)
+    ? RPT.timeline.map(x=>`<div class="tl-item"><div class="tl-dot ${x.kind}">${dotIc[x.kind]||dotIc.agent}</div><div class="tl-txt"><div class="tl-t">${x.t}</div>${x.m?`<div class="tl-m">${x.m}</div>`:''}<div class="tl-time">${x.time}</div></div></div>`).join('')
+    : '<div class="tl-empty">Nothing recorded yet.</div>';
+  return `<div class="card"><div class="fd-card-h">Activity log<span class="wq-count" style="background:var(--surface-3);color:var(--text-2)">${(RPT.timeline&&RPT.timeline.length)||0}</span></div><div class="rp-activity">${rows}</div></div>`;
+}
 
 /* ---------- reusable card builders ---------- */
 function agentCard(o){
@@ -2488,6 +2906,23 @@ const THINK={
     "Reconciling every ownership percentage back to the consolidation.",
     "Running the BEA size-test edit checks across all assembled forms.",
     "Comparing against the prior year — Germany's revenue is up 12%, within a normal range.",
+  ],
+  collect:[
+    "Opening the connected source and reading the FY25 general ledger for every entity.",
+    "Matching source columns to the BE-11 master fields — 23 of 25 line up cleanly.",
+    "Resolving each affiliate's ledger — 40 of 42 entities matched, 2 need a closer look.",
+    "Reconciling this period against the prior filing to catch anything that drifted.",
+    "Brazil's intercompany balance is off by $12,400 versus last year — that's a break.",
+    "Nordic's opening balances don't tie to the March acquisition close — flagging it.",
+    "Opening a chase task for each break so the local owner can confirm the figures.",
+  ],
+  discover:[
+    "Reading this filing's profile — FY2025 annual BE-11, so I need entity-level detail for the 12/31/2025 period.",
+    "Listing the systems you're connected to: ERPs, consolidation tools, and document stores.",
+    "Querying each source for datasets that cover this reporting period.",
+    "NetSuite ERP has per-entity trial balances across the full consolidation — that's a strong fit.",
+    "OneStream holds consolidated figures but thinner per-entity detail — only a partial match.",
+    "Ranking every candidate by period coverage, entity granularity, and figure completeness.",
   ],
 };
 let curThink=null, thinkTimers=[];
@@ -2567,63 +3002,93 @@ function hubProbeBody(){
   const probes=['Entity register','Trial balance','Prior-year filings'].map((p,i)=>`<div class="probe" style="animation-delay:${i*.1}s"><div class="probe-ic">${OB_ICONS.src}</div><div class="probe-name">${p}</div><div class="probe-state"><span class="probe-dot"></span>searching…</div></div>`).join('');
   return `<div class="conn-scanhead"><span class="think-spin"></span>Scanning your Data Hub…</div><div class="conn-scan">${probes}</div>`;
 }
+function hubPreviewTable(key){
+  const r=OB_TYPES[RPT.type];
+  if(key==='entity'){
+    const own=e=> e.reporter?'Parent':e.own+'%';
+    const rows=OB_ENTITIES.slice(0,5).map(e=>`<tr><td>${e.name}</td><td>${e.country}</td><td class="num">${own(e)}</td></tr>`).join('');
+    const more=OB_ENTITIES.length-5;
+    return `<div class="hub-prev-head">${OB_ICONS.org}<span>Entity register · ${OB_ENTITIES.length} entities</span></div><div class="hub-ptable-wrap"><table class="hub-ptable"><thead><tr><th>Entity</th><th>Country</th><th class="num">Ownership</th></tr></thead><tbody>${rows}</tbody></table></div>${more>0?`<div class="hub-prev-more">+${more} more entities · full list scanned in Step 2</div>`:''}`;
+  }
+  const rows=TB_PREVIEW.map(t=>`<tr><td>${t.acct}</td><td class="num">${t.bal<0?'(':''}${fmtRev(Math.abs(t.bal))}${t.bal<0?')':''}</td></tr>`).join('');
+  return `<div class="hub-prev-head">${OB_ICONS.tb}<span>Trial balance · ${r.period}</span></div><div class="hub-ptable-wrap"><table class="hub-ptable"><thead><tr><th>Account</th><th class="num">Balance</th></tr></thead><tbody>${rows}</tbody></table></div><div class="hub-prev-more">Consolidated · NetSuite · 96% match to prior period</div>`;
+}
 function hubFoundList(){
   const r=OB_TYPES[RPT.type];
-  const rows=[
-    {n:'Entity List', s:'Data Hub · Entity register · updated 3 days ago'},
-    {n:`Trial Balance · ${r.period}`, s:'Data Hub · NetSuite consolidation · 96% match'},
-  ].map((x,i)=>`<div class="hub-row" style="animation-delay:${i*.07}s"><div class="hub-ic">${OB_ICONS.check}</div><div class="hub-main"><div class="hub-name">${x.n}</div><div class="hub-src">${x.s}</div></div><span class="hub-badge">In Data Hub</span></div>`).join('');
-  return `<div class="hub-find">${rows}</div>`;
+  RPT.hubPreview=RPT.hubPreview||{};
+  const found=[
+    {key:'entity', n:'Entity List', s:'Data Hub · Entity register · updated 3 days ago'},
+    {key:'tb', n:`Trial Balance · ${r.period}`, s:'Data Hub · NetSuite consolidation · 96% match'},
+  ];
+  const foundRows=found.map((x,i)=>{
+    const open=!!RPT.hubPreview[x.key];
+    return `<div class="hub-item">
+      <div class="hub-row" style="animation-delay:${i*.07}s">
+        <div class="hub-ic">${OB_ICONS.check}</div>
+        <div class="hub-main"><div class="hub-name">${x.n}</div><div class="hub-src">${x.s}</div></div>
+        <button class="hub-prev-btn${open?' open':''}" onclick="rptTogglePreview('${x.key}')">${OB_ICONS.eye}<span>${open?'Hide preview':'Preview'}</span></button>
+        <span class="hub-badge">In Data Hub</span>
+      </div>
+      ${open?`<div class="hub-prev">${hubPreviewTable(x.key)}</div>`:''}
+    </div>`;
+  }).join('');
+  const priorRow = RPT.priorFiling
+    ? `<div class="hub-item"><div class="hub-row" style="animation-delay:.14s"><div class="hub-ic">${OB_ICONS.check}</div><div class="hub-main"><div class="hub-name">Prior-year filings</div><div class="hub-src">${RPT.priorFiling} · uploaded by you</div></div><span class="hub-badge">Added</span></div></div>`
+    : `<div class="hub-item"><div class="hub-row missing" style="animation-delay:.14s"><div class="hub-ic missing">${OB_ICONS.pr}</div><div class="hub-main"><div class="hub-name">Prior-year filings</div><div class="hub-src">Not in your Data Hub — I need last year's ${r.code} to baseline against</div></div><span class="hub-badge missing">Not found</span></div>
+      <button class="hub-up" onclick="rptUploadFilings()">
+        <div class="hub-up-ic">${OB_ICONS.upload}</div>
+        <div class="hub-up-txt"><div class="hub-up-h">Upload your previous filings</div><div class="hub-up-m">Last year's filed ${r.code} — <span class="up1-fmt">PDF</span><span class="up1-fmt">XLSX</span><span class="up1-fmt">ZIP</span></div></div>
+      </button></div>`;
+  return `<div class="hub-find">${foundRows}${priorRow}</div>`;
 }
 function manualFallback(){
   return `<div class="src-manual"><button onclick="rptManualUpload()">${OB_ICONS.upload}<span>Or upload your source files manually</span></button></div>`;
-}
-function missingFilingsUpload(){
-  return `<button class="up1-drop" onclick="rptUploadFilings()">
-    <div class="up1-ic">${OB_ICONS.upload}</div>
-    <div class="up1-h">Upload your previous filings</div>
-    <div class="up1-m">Last year's filed report so the Operator can baseline against it — <span class="up1-fmt">PDF</span><span class="up1-fmt">XLSX</span><span class="up1-fmt">ZIP</span></div>
-  </button>`;
 }
 function sourceDataStep(){
   const r=OB_TYPES[RPT.type];
   if(!RPT.hubScanned){
     return agentCard({icon:OB_ICONS.spark,name:'Source Discovery',tag:'Step 1',role:'The Operator checks your connected Data Hub for what this filing needs — the latest entity list, the trial balance for the period, and your previous filings.',body:hubProbeBody()})+manualFallback();
   }
-  if(!RPT.hubConfirmed){
-    return agentCard({icon:OB_ICONS.spark,name:'Source Discovery',tag:'Step 1',role:`I found the latest <strong>Entity List</strong> and <strong>Trial Balance · ${r.period}</strong> in your Data Hub. Confirm to pull them straight in — no export needed.`,body:hubFoundList(),cta:`<div class="agentc-cta"><button class="btn primary" onclick="rptHubConfirm()">${OB_ICONS.check}Use these sources</button><span class="agent-status">Pulled directly from your Data Hub.</span></div>`})+manualFallback();
-  }
-  let h=rcpt('Data Hub sources confirmed','You',`Entity List &amp; Trial Balance · ${r.period} ${chip('from Data Hub')}`);
-  h+=agentCard({icon:OB_ICONS.upload,name:'Source Discovery',tag:'Step 1',role:`One thing isn't in your Data Hub: your <strong>previous filings</strong>. Upload last year's ${r.code} and I'll baseline the new report against it.`,body:missingFilingsUpload()});
-  h+=manualFallback();
-  return h;
+  const hasPrior=!!RPT.priorFiling;
+  const status=hasPrior
+    ? 'Entity list, trial balance & your uploaded filing — ready to pull in.'
+    : `Add last year's ${r.code} above so I can baseline against it, then confirm.`;
+  const cta=`<div class="agentc-cta"><button class="btn primary" onclick="rptHubConfirm()">${OB_ICONS.check}Use these sources</button><span class="agent-status">${status}</span></div>`;
+  return agentCard({icon:OB_ICONS.spark,name:'Source Discovery',tag:'Step 1',role:`I checked your Data Hub for everything this filing needs. I found the latest <strong>Entity List</strong> and <strong>Trial Balance · ${r.period}</strong> — open a preview to check them before pulling them in. Your <strong>previous filings</strong> aren't in the Data Hub, so upload last year's ${r.code} right here.`,body:hubFoundList(),cta})+manualFallback();
 }
 function rptHubScan(){
   if(!RPT || RPT.hubScanning || RPT.hubScanned || RPT.uploaded) return;
-  RPT.hubScanning=true; if(inReport()) renderReport();
+  RPT.hubScanning=true; if(inReportFlow()) renderReport();
   rptLog('agent','Data Hub scan started','Looking for entity list, trial balance & prior filings');
   setTimeout(()=>{
     if(!RPT || RPT.hubConfirmed || RPT.uploaded){ if(RPT) RPT.hubScanning=false; return; }
     RPT.hubScanning=false; RPT.hubScanned=true;
     rptLog('agent','Data Hub scan finished','Entity list & trial balance found · previous filings missing');
-    showToast('Data Hub scanned — 2 sources found');
-    if(inReport()) renderReport();
+    showToast('Data Hub scanned — 2 found · previous filings missing');
+    if(inReportFlow()) renderReport();
   }, AGENT_RUN_MS);
+}
+function rptTogglePreview(key){
+  if(!RPT) return;
+  RPT.hubPreview=RPT.hubPreview||{};
+  RPT.hubPreview[key]=!RPT.hubPreview[key];
+  renderReport();
 }
 function rptHubConfirm(){
   const r=OB_TYPES[RPT.type];
   RPT.hubConfirmed=true;
   RPT.sources=['Entity List · Data Hub', `Trial Balance ${r.period} · Data Hub`];
-  rptLog('commit','You confirmed the Data Hub sources','Entity list & trial balance');
-  showToast('Using your Data Hub sources'); renderReport();
+  if(RPT.priorFiling) RPT.sources.push(RPT.priorFiling);
+  RPT.uploaded=true;
+  rptLog('commit','You confirmed the sources',RPT.sources.join(' · '));
+  showToast('Sources confirmed — scanning'); renderReport(); rptScan();
 }
 function prevFilingName(){ const r=OB_TYPES[RPT.type]; const y=parseInt((r.period.match(/\d{4}/)||['2025'])[0],10)-1; return `${r.code.replace(/[^A-Za-z0-9]/g,'')}_${y}_filed.pdf`; }
 function rptUploadFilings(){
   const f=prevFilingName();
-  RPT.sources=(RPT.sources||[]).concat([f]);
-  RPT.uploaded=true;
+  RPT.priorFiling=f;
   rptLog('human','You uploaded previous filings',f);
-  showToast('Uploaded — scanning'); renderReport(); rptScan();
+  showToast('Previous filing added'); renderReport();
 }
 function rptManualUpload(){
   const r=OB_TYPES[RPT.type];
@@ -2712,13 +3177,13 @@ function rptDue(){ return RPT.propDue!=null?RPT.propDue:OB_TYPES[RPT.type].due; 
 function rptSetProp(k,v){ const clean=String(v).trim(); RPT[k]=clean.length?clean:null; }
 function setupProposal(){
   const r=OB_TYPES[RPT.type];
-  const ef=(ic,k,val,src,key)=>`<div class="prop-field reveal"><div class="prop-ic">${ic}</div><div class="prop-main"><div class="prop-k">${k}</div><div class="prop-v"><input class="prop-in" value="${escAttr(val)}" onchange="rptSetProp('${key}',this.value)" /></div><div class="prop-cite">${cite(src,'high')}</div></div></div>`;
+  const ef=(ic,k,val,src,key)=>`<div class="prop-field reveal"><div class="prop-ic">${ic}</div><div class="prop-main"><div class="prop-k">${k}</div><div class="prop-v"><input class="prop-in" value="${escAttr(val)}" onchange="rptSetProp('${key}',this.value)" /></div></div></div>`;
   return `<div class="propose">
     <div class="prop-editnote">${OB_ICONS.edit||''}The Operator proposed these — edit any field to overwrite it.</div>
     ${ef(OB_ICONS.tag,'Report name',rptName(),'Report type + ledger period','propName')}
     ${ef(OB_ICONS.cal,'Filing period',rptPeriod(),'Ledger period end · Dec 31, 2025','propPeriod')}
     ${ef(OB_ICONS.cal,'Statutory due date',rptDue(),r.dueReason,'propDue')}
-    <div class="prop-field readiness reveal"><div class="prop-ic">${OB_ICONS.target}</div><div class="prop-main"><div class="prop-k">Your readiness target <span class="prop-opt">internal</span></div><div class="prop-v"><input type="date" id="rptReadiness" value="${RPT.readiness}" onchange="rptSetReadiness(this.value)" class="date-in" /></div><div class="prop-cite">${cite('Suggested ~2 weeks before the statutory due date','medium')}</div></div></div>
+    <div class="prop-field reveal"><div class="prop-ic">${OB_ICONS.target}</div><div class="prop-main"><div class="prop-k">Your readiness target <span class="prop-opt">internal</span></div><div class="prop-v"><input type="date" id="rptReadiness" value="${RPT.readiness}" onchange="rptSetReadiness(this.value)" class="date-in" /></div></div></div>
   </div>`;
 }
 function rptUpload(){
@@ -2733,7 +3198,9 @@ function rptUpload(){
 function rptConnect(){
   CONN={phase:'scan', sel:null};
   document.getElementById('overlay').classList.add('open');
+  initSteps('discover');
   renderConnectModal();
+  scheduleSteps(AGENT_RUN_MS);
   rptLog('agent','Connection scan started','Probing your connected systems for a match');
   setTimeout(()=>{ if(!CONN || CONN.phase!=='scan') return; CONN.phase='results'; CONN.sel=CONN_MATCHES[0].id; renderConnectModal(); rptLog('agent','Connection scan finished',`${CONN_MATCHES.length} possible sources · ${CONN_MATCHES[0].sys} is the best match`); }, AGENT_RUN_MS);
 }
@@ -2744,6 +3211,7 @@ function renderConnectModal(){
     const probes=CONN_PROBE.map((p,i)=>`<div class="probe" style="animation-delay:${i*.09}s"><div class="probe-ic">${OB_ICONS.src}</div><div class="probe-name">${p}</div><div class="probe-state"><span class="probe-dot"></span>checking…</div></div>`).join('');
     m.innerHTML=head+`<div class="modal-b">
       <div class="conn-intro">${OB_ICONS.spark}<span>I'm scanning the systems you're connected to for a source that matches this filing — the right period, entity detail and figures. I'll rank what I find by how well it fits.</span></div>
+      ${stepsPanelHtml()}
       <div class="conn-scanhead"><span class="think-spin"></span>Scanning connected systems…</div>
       <div class="conn-scan">${probes}</div>
     </div>
@@ -2796,7 +3264,7 @@ function rptScan(){ if(RPT.scanning) return; RPT.scanning=true; initSteps('scan'
 function rptApproveEntities(){ RPT.entitiesApproved=true; rptLog('commit','You confirmed the entity list',`${RPT.entities.length} entities with ownership & revenue`); renderReport(); if(!RPT.setupRun && !RPT.setupProposing) rptSetupRun(); }
 function rptSetupRun(){ if(RPT.setupProposing) return; RPT.setupProposing=true; initSteps('setup'); renderReport(); scheduleSteps(AGENT_RUN_MS); rptLog('agent','Filing Setup Assistant started','Deriving name, period & due date'); setTimeout(()=>{ RPT.setupProposing=false; RPT.setupRun=true; rptLog('agent','Filing Setup Assistant finished','Name, period & due date proposed'); renderReport(); }, AGENT_RUN_MS); }
 function rptSetReadiness(v){ RPT.readiness=v; }
-function rptAcceptSetup(){ RPT.setupAccepted=true; RPT.readinessSet=true; RPT.setupDone=true; RPT.unlocked.scoping=RPT.full; rptLog('commit','You confirmed the report setup',`Readiness target ${fmtDate(RPT.readiness)}`); renderReport(); }
+function rptAcceptSetup(){ RPT.setupAccepted=true; RPT.readinessSet=true; RPT.setupDone=true; RPT.unlocked.scoping=true; rptLog('commit','You confirmed the report setup',`Readiness target ${fmtDate(RPT.readiness)}`); enterProject(); }
 function rptToScoping(){ rptLog('human','You moved to Planning','Scope & Forms standing by'); rptGoto('scoping'); if(!RPT.scopeRun && !RPT.scoping) setTimeout(rptScopeRun,340); }
 
 /* ================= SCOPING TAB ================= */
@@ -2813,6 +3281,7 @@ function scopingTab(){
   }
   h+=agentCard({icon:OB_ICONS.target,name:'Forms & entities',tag:'Scope',role:'Each form is assigned from the BEA rules — review the reasoning, override any call, then confirm the plan below.',body:scopeTable()});
   h+=planApprovalCard();
+  h+=planReminderCard();
   h+=planPeopleCard();
   return h;
 }
@@ -2834,7 +3303,25 @@ function planApprovalCard(){
   </div>`;
   return agentCard({icon:OB_ICONS.shield,name:'Approval process',tag:'Sign-off',role:'Choose how many levels of sign-off each area\'s numbers pass through before filing.',body});
 }
-/* ---- Planning · people / groups per area ---- */
+/* ---- Planning · reminder cadence (how aggressive the follow-ups are) ---- */
+function planReminderCard(){
+  const opt=o=>`<button class="appr-opt ${RPT.reminders===o.key?'sel':''}" data-rem="${o.key}" onclick="rptSetReminders('${o.key}')">
+      <div class="appr-top"><span class="appr-name">${o.name}</span><span class="appr-radio"></span></div>
+      <div class="appr-desc">${o.desc}</div>
+      <div class="appr-flow"><span class="appr-step"><span class="ard"></span>${o.cadence}</span></div>
+      ${o.rec?`<div><span class="appr-rec">${OB_ICONS.check}Recommended</span></div>`:''}
+    </button>`;
+  const body=`<div class="plan-appr plan-rem">${REMINDER_OPTS.map(opt).join('')}</div>`;
+  return agentCard({icon:OB_ICONS.bell,name:'Reminder cadence',tag:'Follow-ups',role:'Set how assertively the agent chases outstanding tasks before they hold up the filing. Applies to everyone assigned below.',body});
+}
+function rptSetReminders(key){
+  if(RPT.reminders===key) return; RPT.reminders=key;
+  const o=REMINDER_OPTS.find(x=>x.key===key);
+  rptLog('human','You set reminder cadence', o?o.name+' — '+o.cadence:key);
+  document.querySelectorAll('.plan-rem .appr-opt').forEach(el=>el.classList.toggle('sel',el.dataset.rem===key));
+  const st=document.getElementById('planApproveStatus'); if(st) st.textContent=planApproveStatusText();
+}
+/* ---- Planning · people / groups (global, per report) ---- */
 function areaStats(area){
   const ents=RPT.entities.filter(e=>AREA_OF[e.country]===area);
   const filing=ents.filter(e=>isFiling(curForm(e))).length;
@@ -2843,48 +3330,45 @@ function areaStats(area){
 }
 function planAvs(people){ return `<div class="grp-avs">${people.map(p=>`<div class="av ${p.c}">${p.i}</div>`).join('')}</div>`; }
 const PENCIL_IC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>';
-function rosterChips(ai,roleKey){
-  const grp=planAreas()[ai][roleKey];
+const ROLE_LABELS={prep:'preparer',review:'reviewer',approve:'approver'};
+function rosterChips(roleKey){
+  const grp=planGlobal()[roleKey];
   return ROSTER.map((p,pi)=>{
     const on=grp.people.some(x=>x.i===p.i&&x.c===p.c);
-    return `<button class="rp-pick ${on?'on':''}" onclick="rptTogglePerson(${ai},'${roleKey}',${pi})"><span class="av ${p.c}">${p.i}</span><span class="rp-pick-n">${p.n}</span><span class="rp-pick-c">${on?OB_ICONS.check:''}</span></button>`;
+    return `<button class="rp-pick ${on?'on':''}" onclick="rptTogglePerson('${roleKey}',${pi})"><span class="av ${p.c}">${p.i}</span><span class="rp-pick-n">${p.n}</span><span class="rp-pick-c">${on?OB_ICONS.check:''}</span></button>`;
   }).join('');
 }
-function grpRow(ai,roleKey,role,cls,g){
+function grpRow(roleKey,role,cls,g){
   const names=g.people.map(p=>p.n).join(' · ');
-  const key=ai+':'+roleKey; const open=RPT.planOpen===key;
+  const open=RPT.planOpen===roleKey;
   return `<div class="grp-row ${open?'editing':''}">
     <span class="grp-role ${cls}">${role}</span>
     <div class="grp-main"><div class="grp-name">${g.name}</div><div class="grp-names">${names||'Unassigned'}</div></div>
     ${planAvs(g.people)}
-    <button class="grp-edit" onclick="rptTogglePlanEdit(${ai},'${roleKey}')" title="Change who's assigned">${PENCIL_IC}<span>Change</span></button>
-    ${open?`<div class="grp-picker"><div class="grp-picker-h">Assign to ${role.toLowerCase()} — ${g.name}</div><div class="grp-picker-list">${rosterChips(ai,roleKey)}</div></div>`:''}
+    <button class="grp-edit" onclick="rptTogglePlanEdit('${roleKey}')" title="Change who's assigned">${PENCIL_IC}<span>Change</span></button>
+    ${open?`<div class="grp-picker"><div class="grp-picker-h">Assign to ${role.toLowerCase()} — ${g.name}</div><div class="grp-picker-list">${rosterChips(roleKey)}</div></div>`:''}
   </div>`;
 }
 function planPeopleInner(){
   const two=RPT.approval===2;
-  const rows=planAreas().map((a,ai)=>{
-    const st=areaStats(a.area);
-    if(!st.n) return '';
-    let grps=grpRow(ai,'prep','Preparer','prep',a.prep);
-    if(two) grps+=grpRow(ai,'review','Reviewer','rev',a.review);
-    grps+=grpRow(ai,'approve','Approver','appr',a.approve);
-    return `<div class="area-row"><div class="area-head"><div><div class="area-name">${OB_ICONS.org}${a.area}</div><div class="area-cty">${st.ctys.join(' · ')}</div></div><div class="area-count">${st.n} ${st.n===1?'entity':'entities'}<br>${st.filing} filing</div></div><div class="grp-grid">${grps}</div></div>`;
-  }).join('');
-  return `<div class="area-list">${rows}</div>`;
+  const g=planGlobal();
+  let rows=grpRow('prep','Preparer','prep',g.prep);
+  if(two) rows+=grpRow('review','Reviewer','rev',g.review);
+  rows+=grpRow('approve','Approver','appr',g.approve);
+  return `<div class="grp-grid">${rows}</div>`;
 }
-function rptTogglePlanEdit(ai,roleKey){ const key=ai+':'+roleKey; RPT.planOpen=RPT.planOpen===key?null:key; const pc=document.getElementById('planPeople'); if(pc) pc.innerHTML=planPeopleInner(); }
-function rptTogglePerson(ai,roleKey,pi){
-  const grp=planAreas()[ai][roleKey]; const p=ROSTER[pi]; if(!grp||!p) return;
+function rptTogglePlanEdit(roleKey){ RPT.planOpen=RPT.planOpen===roleKey?null:roleKey; const pc=document.getElementById('planPeople'); if(pc) pc.innerHTML=planPeopleInner(); }
+function rptTogglePerson(roleKey,pi){
+  const grp=planGlobal()[roleKey]; const p=ROSTER[pi]; if(!grp||!p) return;
   const idx=grp.people.findIndex(x=>x.i===p.i&&x.c===p.c);
   if(idx>=0){ if(grp.people.length<=1){ showToast('Keep at least one person assigned'); return; } grp.people.splice(idx,1); }
   else { grp.people.push({i:p.i,c:p.c,n:p.n}); }
-  rptLog('human','You changed the '+roleKey+' assignment', planAreas()[ai].area+' · '+grp.name+' → '+grp.people.map(x=>x.n).join(', '));
+  rptLog('human','You changed the '+(ROLE_LABELS[roleKey]||roleKey)+' group', grp.name+' → '+grp.people.map(x=>x.n).join(', '));
   const pc=document.getElementById('planPeople'); if(pc) pc.innerHTML=planPeopleInner();
 }
-function planApproveStatusText(){ const c=formCounts(); return `${c.filing} filing · ${c.notfiling} not filing · ${RPT.approval===2?'two-level':'single-level'} approval`; }
+function planApproveStatusText(){ const c=formCounts(); const r=REMINDER_OPTS.find(x=>x.key===RPT.reminders); return `${c.filing} filing · ${c.notfiling} not filing · ${RPT.approval===2?'two-level':'single-level'} approval · ${r?r.name.toLowerCase():''} reminders`; }
 function planPeopleCard(){
-  return agentCard({icon:OB_ICONS.people,name:'People involved',tag:'Groups per area',role:'Every affiliate is routed to a group by area, following the approval chain you set above. Use <strong>Change</strong> on any group to swap who\'s assigned — switch the approval depth and the right groups pick up the work.',body:`<div id="planPeople">${planPeopleInner()}</div>`,cta:`<div class="agentc-cta"><button class="btn primary" onclick="rptApproveScope()">${OB_ICONS.check}Confirm plan</button><span class="agent-status" id="planApproveStatus">${planApproveStatusText()}</span></div>`});
+  return agentCard({icon:OB_ICONS.people,name:'People involved',tag:'Per report',role:'Choose who owns each step for the whole report — these groups follow the approval process you set above, whatever region an affiliate rolls up to. Use <strong>Change</strong> on any group to swap who\'s assigned.',body:`<div id="planPeople">${planPeopleInner()}</div>`,cta:`<div class="agentc-cta"><button class="btn primary" onclick="rptApproveScope()">${OB_ICONS.check}Confirm plan</button><span class="agent-status" id="planApproveStatus">${planApproveStatusText()}</span></div>`});
 }
 function rptSetApproval(n){
   if(RPT.approval===n) return; RPT.approval=n;
@@ -2896,8 +3380,11 @@ function rptSetApproval(n){
 function planSummary(){
   const c=formCounts();
   const lvl=RPT.approval===2?'two-level approval (preparer → reviewer → approver)':'single-level approval (preparer → approver)';
-  const areas=planAreas().filter(a=>areaStats(a.area).n).map(a=>a.area).join(', ');
-  return `${c.filing} filing · ${c.notfiling} not filing · ${lvl} · groups assigned across ${areas}`;
+  const r=REMINDER_OPTS.find(x=>x.key===RPT.reminders);
+  const g=planGlobal();
+  const names=[...g.prep.people,...(RPT.approval===2?g.review.people:[]),...g.approve.people].map(p=>p.i);
+  const uniq=[...new Set(names)];
+  return `${c.filing} filing · ${c.notfiling} not filing · ${lvl} · ${r?r.name.toLowerCase():''} reminders · ${uniq.length} people assigned`;
 }
 function ownTag(e){ if(e.reporter) return '<span class="tag">Reporter</span>'; if(e.own>=100) return '<span class="tag">Wholly owned</span>'; if(e.majority) return `<span class="tag">Majority ${e.own}%</span>`; return `<span class="tag warn">Minority ${e.own}%</span>`; }
 function figLine(k,v){ if(v==null) return `<div class="fig"><span class="fig-k">${k}</span><span class="fig-v muted">pending</span></div>`; const big=Math.abs(v)>60000; return `<div class="fig"><span class="fig-k">${k}</span><span class="fig-v ${big?'over':''}">${fmtRev(Math.abs(v))}</span></div>`; }
@@ -2937,16 +3424,795 @@ function rptSetForm(i,val){
 }
 function rptScopeRun(){ if(RPT.scoping) return; RPT.scoping=true; initSteps('scope'); renderReport(); scheduleSteps(AGENT_RUN_MS); rptLog('agent','Planning started','Mapping forms, approvals & groups'); setTimeout(()=>{ RPT.scoping=false; RPT.scopeRun=true; const c=formCounts(); rptLog('agent','Planning finished',`${c.filing} filing · ${c.notfiling} not filing · two-level approval · groups assigned`); showToast('Plan ready — 1 form needs your call'); renderReport(); }, AGENT_RUN_MS); }
 function rptApproveScope(){ RPT.scopeApproved=true; RPT.scopeDone=true; RPT.unlocked.mapping=true; const c=formCounts(); rptLog('commit','You confirmed scope & forms',`${c.filing} filing · ${c.notfiling} not filing`); renderReport(); }
-function rptToMapping(){ rptLog('human','You moved to Data collection','Mapping Agent standing by'); rptGoto('mapping'); if(!RPT.mapRun && !RPT.mapping) setTimeout(rptMapRun,340); }
+function rptToMapping(){ rptLog('human','You moved to Data collection','Collection Agent standing by'); rptGoto('mapping'); }
+
+/* ================= DATA COLLECTION — fixtures =================
+   Ported from the Agent-First CRR flow: a workspace connection library, a
+   mocked source "pull" (reconcile + open chase tasks), a parsed-data preview
+   with column classification, and provider data-collection packets. Fixture
+   data only — no real integrations. */
+const CONN_KIND_META={
+  erp:{icon:OB_ICONS.src,label:'ERP'},
+  warehouse:{icon:OB_ICONS.src,label:'Warehouse'},
+  drive:{icon:OB_ICONS.pr,label:'Drive'},
+  api:{icon:OB_ICONS.org,label:'API'},
+  workbook:{icon:OB_ICONS.gl,label:'Workbook'},
+};
+const CONN_STATUS_META={
+  connected:{label:'Connected',tone:'ok'},
+  available:{label:'In your workspace',tone:'accent'},
+  shared:{label:'Shared with you',tone:'neutral'},
+};
+/* The workspace connection catalog surfaced at Data collection. NetSuite is
+   already wired to this filing; the rest were set up by other teams and can be
+   reused in one click instead of standing up a brand-new integration. */
+const DATA_CONNECTIONS=[
+  {id:'netsuite-us', name:'NetSuite — US Consolidated', kind:'erp', owner:'IT · Finance Systems', detail:'Consolidated GL + intercompany subledger', status:'connected', lastSynced:'synced 2h ago', coverage:'42 entities · GL + subledger'},
+  {id:'snowflake-fin', name:'Snowflake — Finance Warehouse', kind:'warehouse', owner:'Data Platform', detail:'Modeled finance marts — revenue, equity, FX', status:'available', lastSynced:'synced nightly', coverage:'All entities · nightly'},
+  {id:'netsuite-latam', name:'NetSuite — LatAm', kind:'erp', owner:'Regional finance (LatAm)', detail:'Statutory ledgers for Brazil, Chile, Colombia', status:'available', lastSynced:'synced 1d ago', coverage:'6 entities'},
+  {id:'wdesk-fy24', name:'FY24 BE-11 workpaper', kind:'workbook', owner:'Dana Whitfield', detail:"Last year's filed workbook — reusable as a source", status:'available', lastSynced:'filed Mar 2025', coverage:'37 line items'},
+  {id:'drive-stat', name:'Statutory filings (shared drive)', kind:'drive', owner:'Group reporting', detail:'PDF stat accounts + local trial balances by entity', status:'shared', lastSynced:'updated weekly'},
+  {id:'bea-prior', name:'BEA prior submissions', kind:'api', owner:'SDC / regulatory', detail:'Your filed BE-11 history — for period-over-period ties', status:'available', lastSynced:'synced on filing'},
+];
+/* The file a preparer could drop instead of a live connection — the agent reads
+   it and reports the fields/entities it recognized. */
+const ONBOARDING_FILE_SAMPLE={
+  fileName:'Global_FY25_trial_balance.xlsx', fileType:'XLSX',
+  findings:[
+    {label:'Recognized BE-11 fields', value:'23 of 25', foundIn:"tab 'Consolidated TB'"},
+    {label:'Entities matched', value:'40 of 42', foundIn:"column 'Company code'"},
+    {label:'Gross revenue (Global)', value:'$291,700,000', foundIn:"row 'GL:4000_REV'"},
+  ],
+};
+/* Coverage of the connected source across the entity roster + the reconciled
+   "test pull". Each affiliate has its own ledger, so the pull reports how many
+   entities resolved and which broke against the prior period. */
+const SOURCE_ENTITY_COVERAGE={totalEntities:42, matchedEntities:40, needsReview:2};
+const SOURCE_PULL={
+  source:'NetSuite — US Consolidated', period:'FY25', requiredFieldCount:25, matchedFieldCount:23,
+  fields:[
+    {column:'GL:1000_TA', master:'Total assets', value:'$438,100,000', matched:true},
+    {column:'GL:4000_REV', master:'Gross revenue', value:'$291,700,000', matched:true},
+    {column:'GL:4900_NET', master:'Net income after tax', value:'$24,050,000', matched:true},
+    {column:'GL:2000_TL', master:'Total liabilities', value:'$205,600,000', matched:true},
+    {column:'GL:3000_EQ', master:"Owners' equity", value:'$232,500,000', matched:true},
+    {column:'GL:4200_IC', master:'Intercompany balance', value:'—', matched:false},
+  ],
+  reconciliationBreaks:[
+    {id:'recon-ic', affiliate:'Brazil Services Ltda', description:'Intercompany balance off vs. prior period', delta:'$12,400'},
+    {id:'recon-nordic', affiliate:'Nordic Ventures AB', description:"FY25 opening balances don't tie to the acquisition close", delta:'$3,180'},
+  ],
+  scopeFlip:{affiliate:'Brazil Services Ltda', was:'Net income pending', now:'BE-11B (full detail)', reason:'FY25 intercompany balance resolves net income, confirming the full BE-11B'},
+};
+/* A parsed preview of the pulled data + the agent's read of each column, which
+   a human can override ("evaluate columns"). */
+const DATA_PREVIEW={
+  columns:['Company code','Account','Account name','Amount (USD)','Currency','Period'],
+  rows:[
+    ['1000','4000_REV','Gross revenue','291,700,000','USD','FY25'],
+    ['1000','4900_NET','Net income','38,240,000','USD','FY25'],
+    ['2100','1200_AR','Accounts receivable','12,880,000','EUR','FY25'],
+    ['2100','3000_EQ','Total equity','104,500,000','EUR','FY25'],
+    ['3400','4000_REV','Gross revenue','58,110,000','BRL','FY25'],
+    ['3400','5500_IC','Intercompany payable','9,420,000','BRL','FY25'],
+  ],
+  totalRows:1284,
+};
+const COL_ROLE_OPTIONS=['Entity identifier','Account code','Account label','Monetary value','Currency','Reporting period','Ignore'];
+const COLUMN_CLASSIFICATIONS=[
+  {column:'Company code', agentGuess:'Entity identifier', confidence:98},
+  {column:'Account', agentGuess:'Account code', confidence:96},
+  {column:'Account name', agentGuess:'Account label', confidence:94},
+  {column:'Amount (USD)', agentGuess:'Monetary value', confidence:91},
+  {column:'Currency', agentGuess:'Currency', confidence:88},
+  {column:'Period', agentGuess:'Reporting period', confidence:72},
+];
+/* Provider data-collection packets, keyed to the master-field gap they close. A
+   BE-11 chase is never a single number: the subsidiary owner is asked for a
+   whole packet grouped by section, with one `primary` anchor that clears the
+   gap. Each item can be answered three ways — auto-fill from a connection
+   (`pull`), extract from a dropped document (`fromFile`), or typed by hand. */
+const PROVIDER_TASKS={
+  f7:{
+    id:'f7', provider:'Tom Reyes', providerRole:'Brazil Finance', formLabel:'BE-11B', period:'FY25',
+    affiliate:'Brazil Services Ltda', tierLabel:'Tier 1 (≤ $300M) · Parts I, II, III',
+    title:'Brazil BE-11B data packet',
+    ask:"Brazil Services Ltda's FY25 intercompany balance is off by $12,400 versus the prior period — confirm it so the reconciliation break clears — and complete the rest of the simplified Part III packet (USD).",
+    requestedItems:[
+      {id:'br-name', section:'Part I · Identity & ownership', label:'Foreign affiliate legal name', placeholder:'e.g. Brazil Services Ltda.', pull:{value:'Brazil Services Ltda.', foundIn:'entity master'}},
+      {id:'br-loc', section:'Part I · Identity & ownership', label:'City & country of primary activity', placeholder:'e.g. São Paulo, Brazil', pull:{value:'São Paulo, Brazil', foundIn:'entity master'}},
+      {id:'br-fye', section:'Part I · Identity & ownership', label:'Fiscal year-end date', placeholder:'e.g. 31 Dec 2025', pull:{value:'31 Dec 2025', foundIn:'close calendar'}},
+      {id:'br-vote', section:'Part I · Identity & ownership', label:'Direct voting interest held (%)', placeholder:'e.g. 100%', pull:{value:'100%', foundIn:'cap table'}},
+      {id:'br-emp', section:'Part II · Employment & R&D', label:'Total employees at fiscal year-end', placeholder:'e.g. 180', pull:{value:'180', foundIn:'HR system · headcount'}, fromFile:{value:'180', foundIn:'page 2'}},
+      {id:'br-comp', section:'Part II · Employment & R&D', label:'Total employee compensation (USD)', placeholder:'e.g. 7,900,000', pull:{value:'$7,900,000', foundIn:'payroll GL'}},
+      {id:'br-rev', section:'Part III · Simplified financials', label:'FY25 statutory revenue (USD)', placeholder:'e.g. 6,240,000', pull:{value:'$6,240,000', foundIn:'income statement · account 4000'}, fromFile:{value:'$6,240,000', foundIn:'page 3'}},
+      {id:'br-ni', section:'Part III · Simplified financials', label:'Net income after foreign tax (USD)', placeholder:'e.g. 820,000', pull:{value:'$820,000', foundIn:'income statement · net'}, fromFile:{value:'$820,000', foundIn:'page 4'}},
+      {id:'br-assets', section:'Part III · Simplified financials', label:'Total assets (USD)', placeholder:'e.g. 9,100,000', pull:{value:'$9,100,000', foundIn:'balance sheet · total assets'}, fromFile:{value:'$9,100,000', foundIn:'page 5'}},
+      {id:'br-liab', section:'Part III · Simplified financials', label:'Total liabilities (USD)', placeholder:'e.g. 3,400,000', pull:{value:'$3,400,000', foundIn:'balance sheet · total liabilities'}},
+      {id:'br-eq', section:'Part III · Simplified financials', label:"Total owners' equity (USD)", placeholder:'e.g. 5,700,000', pull:{value:'$5,700,000', foundIn:'balance sheet · equity'}},
+      {id:'br-ic', section:'Part III · Intercompany (gross)', label:'Intercompany balance with U.S. Reporter (USD)', placeholder:'e.g. 3,124,400', primary:true, pull:{value:'$3,124,400', foundIn:'IC recon ledger'}, fromFile:{value:'$3,124,400', foundIn:"sheet 'IC Recon' · cell D14"}},
+    ],
+    connections:[
+      {id:'netsuite-br', name:'NetSuite — Brazil Services Ltda.', kind:'erp', owner:'Regional finance (LatAm)', detail:'Local statutory ledger — full Part III + IC recon', status:'shared', lastSynced:'synced 1d ago', coverage:'Brazil Services Ltda. · statutory ledger'},
+      {id:'drive-br-stat', name:'Brazil statutory folder', kind:'drive', owner:'Group reporting', detail:'Local trial balances + IC schedules', status:'shared', lastSynced:'updated weekly'},
+    ],
+    fileSample:{
+      fileName:'Brazil_FY25_stat_accounts.pdf', fileType:'PDF',
+      findings:[
+        {label:'Intercompany balance (gross)', value:'$3,124,400', foundIn:"sheet 'IC Recon' · D14"},
+        {label:'FY25 statutory revenue', value:'$6,240,000', foundIn:'page 3 · income statement'},
+        {label:'Net income', value:'$820,000', foundIn:'page 4'},
+        {label:'Total assets', value:'$9,100,000', foundIn:'page 5'},
+        {label:'Total employees', value:'180', foundIn:'page 2'},
+      ],
+    },
+  },
+  f8:{
+    id:'f8', provider:'Lukas Weber', providerRole:'Nordic Ventures Finance', formLabel:'BE-11D', period:'FY25',
+    affiliate:'Nordic Ventures AB', tierLabel:'Newly acquired · short-form BE-11D',
+    title:'Nordic Ventures BE-11D data packet',
+    ask:"Nordic Ventures AB was acquired in March 2025, so its FY25 opening balances don't tie to the acquisition close. Supply the audited FY25 statements so the short-form BE-11D can be assembled (USD).",
+    requestedItems:[
+      {id:'nv-name', section:'Part I · Identity & ownership', label:'Foreign affiliate legal name', placeholder:'e.g. Nordic Ventures AB', pull:{value:'Nordic Ventures AB', foundIn:'acquisition close docs'}},
+      {id:'nv-loc', section:'Part I · Identity & ownership', label:'City & country of primary activity', placeholder:'e.g. Stockholm, Sweden', pull:{value:'Stockholm, Sweden', foundIn:'entity master'}},
+      {id:'nv-fye', section:'Part I · Identity & ownership', label:'Fiscal year-end date', placeholder:'e.g. 31 Dec 2025', pull:{value:'31 Dec 2025', foundIn:'close calendar'}},
+      {id:'nv-acq', section:'Part I · Identity & ownership', label:'Acquisition close date', placeholder:'e.g. 14 Mar 2025', pull:{value:'14 Mar 2025', foundIn:'deal close memo'}, fromFile:{value:'14 Mar 2025', foundIn:'cover page'}},
+      {id:'nv-vote', section:'Part I · Identity & ownership', label:'Direct voting interest held (%)', placeholder:'e.g. 100%', pull:{value:'100%', foundIn:'cap table'}},
+      {id:'nv-emp', section:'Part II · Employment', label:'Total employees at fiscal year-end', placeholder:'e.g. 96', pull:{value:'96', foundIn:'HR system · headcount'}, fromFile:{value:'96', foundIn:'page 2'}},
+      {id:'nv-sales', section:'Part III · Financial statements', label:'FY25 sales / operating revenue (USD)', placeholder:'e.g. 38,500,000', primary:true, pull:{value:'$38,500,000', foundIn:'audited income statement'}, fromFile:{value:'$38,500,000', foundIn:'page 3 · income statement'}},
+      {id:'nv-ni', section:'Part III · Financial statements', label:'Net income after foreign tax (USD)', placeholder:'e.g. 6,200,000', pull:{value:'$6,200,000', foundIn:'audited income statement · net'}, fromFile:{value:'$6,200,000', foundIn:'page 4'}},
+      {id:'nv-assets', section:'Part III · Financial statements', label:'Total assets (USD)', placeholder:'e.g. 42,000,000', pull:{value:'$42,000,000', foundIn:'audited balance sheet'}, fromFile:{value:'$42,000,000', foundIn:'page 5'}},
+      {id:'nv-eq', section:'Part III · Financial statements', label:"Total owners' equity (USD)", placeholder:'e.g. 27,300,000', pull:{value:'$27,300,000', foundIn:'audited balance sheet · equity'}},
+    ],
+    connections:[
+      {id:'snowflake-nv', name:'Snowflake — Finance Warehouse', kind:'warehouse', owner:'Data Platform', detail:'Nordic marts loaded post-acquisition', status:'shared', lastSynced:'synced nightly', coverage:'Nordic Ventures AB'},
+      {id:'drive-nv-audit', name:'Nordic FY25 audit folder', kind:'drive', owner:'Group reporting', detail:'Audited statements + acquisition close pack', status:'shared', lastSynced:'updated Apr 2025'},
+    ],
+    fileSample:{
+      fileName:'Nordic_FY25_audited_statements.pdf', fileType:'PDF',
+      findings:[
+        {label:'FY25 sales / operating revenue', value:'$38,500,000', foundIn:'page 3 · income statement'},
+        {label:'Net income', value:'$6,200,000', foundIn:'page 4'},
+        {label:'Total assets', value:'$42,000,000', foundIn:'page 5'},
+        {label:'Acquisition close date', value:'14 Mar 2025', foundIn:'cover page'},
+        {label:'Total employees', value:'96', foundIn:'page 2'},
+      ],
+    },
+  },
+};
+
+/* ---- Reusable data-source affordances (connection library + file drop) ---- */
+function connPill(tone,label){ const cls={ok:'green',accent:'',neutral:'grey'}[tone]||'grey'; return `<span class="pill ${cls}">${label}</span>`; }
+function connLibraryHtml(list, selId, reuseFn){
+  const rows=list.map(c=>{
+    const meta=CONN_KIND_META[c.kind]||{}; const st=CONN_STATUS_META[c.status]||{};
+    const sel=selId===c.id; const wired=c.status==='connected';
+    const badge=sel?connPill('ok','✓ Using'):connPill(st.tone,st.label);
+    const btn=wired
+      ? `<span class="conn-lib-wired">${OB_ICONS.check} Connected</span>`
+      : `<button class="chipbtn" onclick="${reuseFn}('${c.id}')">${sel?OB_ICONS.check+' Undo':'Use this'}</button>`;
+    return `<div class="conn-lib-row ${sel?'sel':''}"><span class="conn-lib-ic">${meta.icon||OB_ICONS.src}</span><div class="conn-lib-main"><div class="conn-lib-name">${c.name} ${badge}</div><div class="conn-lib-detail">${c.detail}</div><div class="conn-lib-meta">${c.owner}${c.coverage?' · '+c.coverage:''} · ${c.lastSynced}</div></div>${btn}</div>`;
+  }).join('');
+  return `<div class="conn-lib"><div class="conn-lib-h">Reuse a connection already in your workspace</div><div class="conn-lib-list">${rows}</div></div>`;
+}
+function fileDropHtml(sample, phase, dropFn){
+  if(!phase || phase==='idle'){
+    return `<button class="file-drop" onclick="${dropFn}()"><span class="file-drop-ic">${OB_ICONS.upload}</span><span class="file-drop-txt"><span class="file-drop-h">Drop a file — I'll find the figures</span><span class="file-drop-m">PDF or Excel — the agent extracts what it needs</span></span></button>`;
+  }
+  const head=`<div class="file-read-head">${OB_ICONS.gl}<span class="file-read-name">${sample.fileName}</span><span class="pill grey">${sample.fileType}</span>${phase==='read'?`<span class="pill green">${OB_ICONS.check} read</span>`:''}</div>`;
+  if(phase==='scanning') return `<div class="file-read">${head}<div class="file-read-scan"><span class="think-spin"></span>Reading the document…</div></div>`;
+  const finds=sample.findings.map(f=>`<div class="file-find"><span class="file-find-ic">${OB_ICONS.arrow}</span><span class="file-find-lab">${f.label}</span><span class="file-find-val">${f.value}</span>${f.foundIn?`<span class="file-find-src">· ${f.foundIn}</span>`:''}</div>`).join('');
+  return `<div class="file-read">${head}<div class="file-find-list">${finds}</div></div>`;
+}
+
+/* ---- Step 1 · Connect data (source pull → reconcile → preview & classify) ---- */
+function connectDataStep(){
+  if(RPT.pullDone) return pullResultsCard();
+  if(RPT.connecting){
+    return agentCard({icon:OB_ICONS.src,name:'Collection Agent',tag:'Connect data',role:`Pulling ${SOURCE_PULL.period} from the source and reconciling it against the prior period — I'll open a chase task for anything that breaks.`,body:`<div class="agentc-run">${stepsPanelHtml()}<span class="agent-status"><span class="dots"><i></i><i></i><i></i></span> Pulling &amp; reconciling ${SOURCE_PULL.source}…</span></div>`});
+  }
+  const ready=RPT.connReused||RPT.connFileRead;
+  const reused=RPT.connReused?DATA_CONNECTIONS.find(c=>c.id===RPT.connReused):null;
+  const body=`${connLibraryHtml(DATA_CONNECTIONS, RPT.connReused, 'rptConnReuse')}
+    <div class="conn-or"><span>or drop a file instead</span></div>
+    ${fileDropHtml(ONBOARDING_FILE_SAMPLE, RPT.connFilePhase, 'rptConnDrop')}`;
+  const status=reused
+    ? `Reusing <strong>${reused.name}</strong> — pull the data to reconcile it.`
+    : (RPT.connFileRead?'File read — pull the data to reconcile it.':'Reuse a connection or drop a file, then pull the data to reconcile it.');
+  const cta=`<div class="agentc-cta"><button class="btn primary" onclick="rptSourcePull()">${OB_ICONS.src}Pull ${SOURCE_PULL.period} data</button><span class="agent-status">${status}</span></div>`;
+  return agentCard({icon:OB_ICONS.src,name:'Collection Agent',tag:'Connect data',role:"Point me at the source and I'll pull this period, reconcile it against the prior filing, and open chase tasks for anything that breaks. Reuse a connection that already exists, or drop a file — no new integration needed.",body,cta});
+}
+function connectReceipt(){
+  const sp=SOURCE_PULL, cov=SOURCE_ENTITY_COVERAGE;
+  return rcpt('Data connected & pulled','Collection Agent · '+sp.source,`${cov.matchedEntities} of ${cov.totalEntities} entities · ${sp.matchedFieldCount} of ${sp.requiredFieldCount} fields ${chip(RPT.connReused?'reused connection':'source pull')}`);
+}
+function rptConnReuse(id){ if(!RPT) return; RPT.connReused=RPT.connReused===id?null:id; if(RPT.connReused){ const c=DATA_CONNECTIONS.find(x=>x.id===id); rptLog('human','You reused a connection', c?c.name:id); } renderReport(); }
+function rptConnDrop(){
+  if(!RPT || RPT.connFilePhase==='scanning') return;
+  RPT.connFilePhase='scanning'; renderReport();
+  setTimeout(()=>{ if(!RPT) return; RPT.connFilePhase='read'; RPT.connFileRead=true; rptLog('agent','Read the dropped file',ONBOARDING_FILE_SAMPLE.fileName); renderReport(); }, 900);
+}
+function rptSourcePull(){
+  if(!RPT || RPT.connecting) return;
+  RPT.connecting=true; initSteps('collect'); renderReport(); scheduleSteps(AGENT_RUN_MS);
+  rptLog('agent','Source pull started',`Reading ${SOURCE_PULL.period} from ${SOURCE_PULL.source}`);
+  setTimeout(()=>{
+    if(!RPT) return;
+    RPT.connecting=false; RPT.pullDone=true;
+    rptLog('agent','Source pull finished',`Pulled ${SOURCE_PULL.matchedFieldCount} of ${SOURCE_PULL.requiredFieldCount} fields · reconciled · ${SOURCE_PULL.reconciliationBreaks.length} breaks · ${Object.keys(PROVIDER_TASKS).length} chase tasks opened`);
+    showToast(`Pulled ${SOURCE_PULL.source} — ${SOURCE_PULL.reconciliationBreaks.length} breaks`);
+    renderReport();
+  }, AGENT_RUN_MS);
+}
+function pullResultsCard(){
+  const sp=SOURCE_PULL, cov=SOURCE_ENTITY_COVERAGE;
+  let h=rcpt('Source connected & pulled','Collection Agent · '+sp.source,`${sp.matchedFieldCount} of ${sp.requiredFieldCount} fields matched · ${cov.matchedEntities} of ${cov.totalEntities} entities ${chip(sp.reconciliationBreaks.length+' breaks')}`);
+  const metrics=`<div class="metric-row"><div class="metric"><div class="metric-v good">${sp.matchedFieldCount}/${sp.requiredFieldCount}</div><div class="metric-k">fields matched</div></div><div class="metric"><div class="metric-v ${cov.needsReview?'warn':'good'}">${cov.matchedEntities}/${cov.totalEntities}</div><div class="metric-k">entities resolved</div></div><div class="metric"><div class="metric-v ${sp.reconciliationBreaks.length?'warn':'good'}">${sp.reconciliationBreaks.length}</div><div class="metric-k">reconciliation breaks</div></div></div>`;
+  const breaks=sp.reconciliationBreaks.map(b=>`<div class="pull-break"><div class="pull-break-ic">${OB_ICONS.info}</div><div class="pull-break-main"><div class="pull-break-h">${b.affiliate}</div><div class="pull-break-m">${b.description}</div></div><span class="pill amber">Δ ${b.delta}</span></div>`).join('');
+  const sf=sp.scopeFlip;
+  const flip=`<div class="pull-flip"><div class="pull-flip-ic">${OB_ICONS.arrow}</div><div class="pull-flip-main"><div class="pull-flip-h">${sf.affiliate}</div><div class="pull-flip-m">${sf.was} → <strong>${sf.now}</strong> · ${sf.reason}</div></div></div>`;
+  const note=`<div class="pull-note">${OB_ICONS.people}<span>Opened <strong>${Object.keys(PROVIDER_TASKS).length} chase tasks</strong> for the breaks I couldn't reconcile — resolve them in the gaps below once the data is mapped.</span></div>`;
+  const body=metrics+`<div class="pull-breaks">${breaks}</div>`+flip+note+pullPreviewHtml();
+  h+=agentCard({icon:OB_ICONS.src,name:'Collection Agent',tag:'Connect data',role:`Pulled ${sp.period} from ${sp.source} and reconciled it against the prior period. Review the coverage, the ${sp.reconciliationBreaks.length} breaks, and how each column is read — then use this data to map to the BE-11 fields.`,body,cta:`<div class="agentc-cta"><button class="btn primary" onclick="rptUseData()">${OB_ICONS.check}Use this data — map to BE-11 fields</button><span class="agent-status">The Mapping Agent aligns the pulled columns to the master field model.</span></div>`});
+  return h;
+}
+function pullPreviewHtml(){
+  const cols=DATA_PREVIEW.columns.map(c=>`<th>${c}</th>`).join('');
+  const rows=DATA_PREVIEW.rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('');
+  const table=`<div class="hub-ptable-wrap"><table class="hub-ptable"><thead><tr>${cols}</tr></thead><tbody>${rows}</tbody></table></div><div class="hub-prev-more">Preview of ${DATA_PREVIEW.totalRows.toLocaleString('en-US')} rows · first ${DATA_PREVIEW.rows.length} shown</div>`;
+  const toggle=`<div class="col-toggle"><button class="col-tog ${RPT.colBy==='agent'?'on':''}" onclick="rptColBy('agent')">Let the agent classify</button><button class="col-tog ${RPT.colBy==='human'?'on':''}" onclick="rptColBy('human')">I'll assign columns</button></div>`;
+  const classRows=COLUMN_CLASSIFICATIONS.map(c=>{
+    const role=RPT.colOverrides[c.column]||c.agentGuess;
+    const conf=c.confidence>=90?'high':(c.confidence>=75?'medium':'low');
+    if(RPT.colBy==='human'){
+      const opts=COL_ROLE_OPTIONS.map(o=>`<option ${o===role?'selected':''}>${o}</option>`).join('');
+      return `<div class="col-row"><span class="col-name">${c.column}</span><select class="col-sel" onchange="rptColSet('${escAttr(c.column)}',this.value)">${opts}</select></div>`;
+    }
+    return `<div class="col-row"><span class="col-name">${c.column}</span><span class="col-role">${OB_ICONS.arrow}${role}</span><span class="conf-badge ${conf}">${c.confidence}%</span></div>`;
+  }).join('');
+  return `<div class="pull-preview"><div class="pull-sub-h">${OB_ICONS.tb}Preview the parsed data</div>${table}<div class="pull-sub-h">${OB_ICONS.map}How each column is read${RPT.colBy==='human'?' — you assign':' — agent classified'}</div>${toggle}<div class="col-list">${classRows}</div></div>`;
+}
+function rptColBy(v){ if(!RPT) return; RPT.colBy=v; renderReport(); }
+function rptColSet(col,val){ if(!RPT) return; RPT.colOverrides[col]=val; rptLog('human','You reassigned a column',col+' → '+val); }
+function rptUseData(){
+  if(!RPT) return; RPT.connected=true;
+  rptLog('commit','You accepted the pulled data',`${SOURCE_ENTITY_COVERAGE.matchedEntities} of ${SOURCE_ENTITY_COVERAGE.totalEntities} entities · ready to map`);
+  showToast('Data accepted — mapping to BE-11 fields'); renderReport();
+}
+
+/* ---- Provider data-collection packet portal (view as provider) ---- */
+let PACKET=null;
+function rptOpenPacket(fid){
+  if(!PROVIDER_TASKS[fid]) return;
+  PACKET={taskId:fid, answers:{}, reused:null, filePhase:'idle'};
+  document.getElementById('overlay').classList.add('open');
+  renderPacketModal();
+}
+function rptClosePacket(){ closeModal(); PACKET=null; }
+function packetProgress(task){
+  const total=task.requestedItems.length;
+  const filled=task.requestedItems.filter(it=>PACKET.answers[it.id]&&PACKET.answers[it.id].value).length;
+  const prim=task.requestedItems.find(it=>it.primary);
+  const primaryDone=!prim||!!(PACKET.answers[prim.id]&&PACKET.answers[prim.id].value);
+  return {total,filled,primaryDone,primaryLabel:prim?prim.label:''};
+}
+function packetItemRow(it){
+  const a=PACKET.answers[it.id];
+  const val=a?escAttr(a.value):'';
+  let srcTag='';
+  if(a&&a.source&&a.source!=='manual'){
+    const lab=a.source==='pull'?'auto-filled':'from file';
+    srcTag=`<span class="pk-src">${OB_ICONS.check}${lab}${a.foundIn?' · '+a.foundIn:''}</span>`;
+  }
+  return `<div class="pk-item ${it.primary?'primary':''}"><div class="pk-item-top"><label class="pk-lab">${it.label}</label>${it.primary?'<span class="pk-req">required · clears the gap</span>':''}</div><input class="pk-in" value="${val}" placeholder="${escAttr(it.placeholder)}" oninput="rptPacketInput('${it.id}',this.value)"/>${srcTag}</div>`;
+}
+function renderPacketModal(){
+  const m=document.getElementById('modal'); if(!m||!PACKET) return;
+  const task=PROVIDER_TASKS[PACKET.taskId]; if(!task) return;
+  const head=`<div class="modal-h">${OB_ICONS.people}<h3>${task.title}</h3><button class="xbtn" onclick="rptClosePacket()">✕</button></div>`;
+  const ctx=`<div class="pk-ctx"><div class="pk-ctx-top"><span class="pk-who">${OB_ICONS.human}${task.provider} · ${task.providerRole}</span><span class="pill grey">${task.formLabel} · ${task.period}</span></div><div class="pk-tier">${task.affiliate} · ${task.tierLabel}</div><div class="pk-ask">${task.ask}</div></div>`;
+  const fill=`<div class="pk-fill"><div class="pk-fill-h">Answer the whole packet at once — reuse a connection or drop the supporting document. Every figure is still editable below.</div>${connLibraryHtml(task.connections, PACKET.reused, 'rptPacketReuse')}<div class="conn-or"><span>or drop the packet document</span></div>${fileDropHtml(task.fileSample, PACKET.filePhase, 'rptPacketDropFile')}</div>`;
+  const sections=[]; task.requestedItems.forEach(it=>{ if(!sections.includes(it.section)) sections.push(it.section); });
+  const groups=sections.map(sec=>{
+    const items=task.requestedItems.filter(i=>i.section===sec).map(packetItemRow).join('');
+    return `<div class="pk-sec"><div class="pk-sec-h">${sec}</div>${items}</div>`;
+  }).join('');
+  const {total,filled,primaryDone,primaryLabel}=packetProgress(task);
+  const submit=primaryDone
+    ? `<button class="btn primary" id="pkSubmit" onclick="rptPacketSubmit()">${OB_ICONS.check}Submit packet</button>`
+    : `<button class="btn primary" id="pkSubmit" disabled title="Answer the required item (${escAttr(primaryLabel)}) to submit">${OB_ICONS.check}Submit packet</button>`;
+  m.innerHTML=head+`<div class="modal-b pk-mbody">${ctx}${fill}<div class="pk-prog" id="pkProg">${filled} of ${total} items filled</div><div class="pk-items">${groups}</div></div>
+    <div class="modal-f"><button class="btn sec" onclick="rptClosePacket()">Close</button>${submit}</div>`;
+}
+function packetUpdateFoot(){
+  if(!PACKET) return; const task=PROVIDER_TASKS[PACKET.taskId]; if(!task) return;
+  const {total,filled,primaryDone}=packetProgress(task);
+  const p=document.getElementById('pkProg'); if(p) p.textContent=`${filled} of ${total} items filled`;
+  const btn=document.getElementById('pkSubmit'); if(btn) btn.disabled=!primaryDone;
+}
+function rptPacketInput(id,val){
+  if(!PACKET) return;
+  if(String(val).trim()) PACKET.answers[id]={value:val, source:'manual'};
+  else delete PACKET.answers[id];
+  packetUpdateFoot();
+}
+function rptPacketReuse(connId){
+  if(!PACKET) return; const task=PROVIDER_TASKS[PACKET.taskId]; if(!task) return;
+  PACKET.reused=PACKET.reused===connId?null:connId;
+  if(PACKET.reused){
+    task.requestedItems.forEach(it=>{ if(it.pull) PACKET.answers[it.id]={value:it.pull.value, source:'pull', foundIn:it.pull.foundIn}; });
+    const c=task.connections.find(x=>x.id===connId);
+    rptLog('agent','Auto-filled the packet from a connection', task.affiliate+' · '+(c?c.name:connId));
+  }
+  renderPacketModal();
+}
+function rptPacketDropFile(){
+  if(!PACKET || PACKET.filePhase==='scanning') return;
+  PACKET.filePhase='scanning'; renderPacketModal();
+  setTimeout(()=>{
+    if(!PACKET) return; const task=PROVIDER_TASKS[PACKET.taskId]; if(!task) return;
+    PACKET.filePhase='read';
+    task.requestedItems.forEach(it=>{ if(it.fromFile) PACKET.answers[it.id]={value:it.fromFile.value, source:'file', foundIn:it.fromFile.foundIn}; });
+    rptLog('agent','Read the dropped document', task.fileSample.fileName);
+    renderPacketModal();
+  }, 900);
+}
+function rptPacketSubmit(){
+  if(!PACKET) return; const task=PROVIDER_TASKS[PACKET.taskId]; if(!task) return;
+  const {primaryDone}=packetProgress(task); if(!primaryDone) return;
+  const fid=PACKET.taskId; const f=RPT.fields.find(x=>x.id===fid);
+  RPT.provTasks[fid]={status:'submitted'};
+  if(f){ f.status='resolved'; f.from='Provider packet'; f.src=task.provider; f.conf='high'; }
+  rptLog('commit','Provider submitted the data packet', task.affiliate+' · '+task.formLabel+' packet complete');
+  closeModal(); PACKET=null;
+  showToast('Packet received — '+(f?f.name:'gap')+' closed');
+  renderReport();
+}
+
+/* =============================================================
+   DATA COLLECTION SURFACES — ported from the Agent-First CRR flow
+   Four surfaces layered onto the existing Data collection stage:
+   (A) Source data — form coverage, sources by-source/by-form, per-source
+       re-pull incl. the mid-period finalized-close restatement, field
+       coverage, and agent-suggested sources.
+   (B) Per-entity field grid — every BE-11B field with the agent's
+       recommended mapping + confidence, a source picker, filters, and a
+       bulk confirm.
+   (C) Data responsibility — who provides / reviews each form and field,
+       with "apply to other forms".
+   (D) Triage — resolve reconciliation breaks, YoY variance, and the
+       scope flip surfaced by the pull.
+   Fixture data only — no real integrations. All state lives on RPT.dc*.
+============================================================= */
+/* The BE-11B field catalog a reviewer audits at field grain. `kind` keys the
+   value resolver into each entity's figures; `coll` is how it's collected
+   (source / manual / unmapped); `cands` are the source columns the agent
+   weighed for the fields it flagged for review. */
+const DC_FIELD_SECTIONS=['Part I · Identity & ownership','Part II · Employment & operations','Part III · Financial statements'];
+const DC_FIELDS=[
+  {id:'name', sec:0, item:'1a', label:'Foreign affiliate legal name', master:'MF.ID.NAME', coll:'source', conf:99, col:'ENTITY_MASTER.name', src:'netsuite-us', kind:'name'},
+  {id:'country', sec:0, item:'1b', label:'Country of primary activity', master:'MF.ID.COUNTRY', coll:'source', conf:98, col:'ENTITY_MASTER.country', src:'netsuite-us', kind:'country'},
+  {id:'city', sec:0, item:'1c', label:'City of primary activity', master:'MF.ID.CITY', coll:'source', conf:86, col:'ENTITY_MASTER.city', src:'netsuite-us', kind:'city'},
+  {id:'fye', sec:0, item:'2', label:'Fiscal year-end date', master:'MF.ID.FYE', coll:'source', conf:95, col:'CLOSE_CAL.fye', src:'netsuite-us', kind:'fye'},
+  {id:'own', sec:0, item:'3', label:'Direct voting interest held (%)', master:'MF.OWN.VOTE', coll:'source', conf:97, col:'CAP_TABLE.voting', src:'netsuite-us', kind:'own'},
+  {id:'emp', sec:1, item:'4', label:'Total employees at year-end', master:'MF.OPS.EMP', coll:'source', conf:72, col:'HRIS.headcount', src:'workday', kind:'emp', status:'needs_review',
+    cands:[{src:'workday',col:'HRIS.headcount',conf:72,note:'Headcount at period close'},{src:'netsuite-us',col:'GL:PAYROLL_HC',conf:58,note:'Derived from payroll runs'}]},
+  {id:'comp', sec:1, item:'5', label:'Employee compensation (USD)', master:'MF.OPS.COMP', coll:'source', conf:88, col:'GL:6100_COMP', src:'netsuite-us', kind:'comp'},
+  {id:'rnd', sec:1, item:'6', label:'R&D expense (USD)', master:'MF.OPS.RND', coll:'source', conf:64, col:'GL:6600_RND', src:'netsuite-us', kind:'rnd', status:'needs_review',
+    cands:[{src:'netsuite-us',col:'GL:6600_RND',conf:64,note:'R&D cost-centre rollup'},{src:'snowflake-fin',col:'FIN.RND_MART',conf:81,note:'Modeled R&D mart — nets grants'}]},
+  {id:'sales', sec:2, item:'7', label:'Sales / operating revenue (USD)', master:'MF.REV.NET', coll:'source', conf:96, col:'GL:4000_REV', src:'netsuite-us', kind:'sales'},
+  {id:'ni', sec:2, item:'8', label:'Net income after foreign tax (USD)', master:'MF.PL.NI', coll:'source', conf:90, col:'GL:4900_NET', src:'netsuite-us', kind:'netIncome'},
+  {id:'assets', sec:2, item:'9', label:'Total assets (USD)', master:'MF.BS.ASSETS', coll:'source', conf:93, col:'GL:1000_TA', src:'netsuite-us', kind:'assets'},
+  {id:'liab', sec:2, item:'10', label:'Total liabilities (USD)', master:'MF.BS.LIAB', coll:'source', conf:89, col:'GL:2000_TL', src:'netsuite-us', kind:'liab'},
+  {id:'equity', sec:2, item:'11', label:"Owners' equity (USD)", master:'MF.BS.EQUITY', coll:'source', conf:91, col:'GL:3000_EQ', src:'netsuite-us', kind:'equity'},
+  {id:'ppe', sec:2, item:'12', label:'Property, plant & equipment (USD)', master:'MF.BS.PPE', coll:'manual', conf:null, col:null, src:null, kind:'ppe'},
+  {id:'ic', sec:2, item:'13', label:'Intercompany balance with U.S. Reporter (USD)', master:'MF.IC.BAL', coll:'unmapped', conf:null, col:null, src:null, kind:'ic', status:'needs_review',
+    cands:[{src:'netsuite-latam',col:'GL:4200_IC',conf:70,note:'LatAm statutory IC ledger'},{src:'drive-stat',col:'IC Recon · D14',conf:66,note:'Local stat pack — IC schedule'}]},
+];
+const DC_SOURCE_NAME={'netsuite-us':'NetSuite — US Consolidated','snowflake-fin':'Snowflake — Finance Warehouse','netsuite-latam':'NetSuite — LatAm','workday':'Workday HRIS','drive-stat':'Statutory drive','manual':'Manual entry'};
+/* Sources feeding the filing, viewable by-source. The group ERP carries the
+   finalized-close restatement (drives the mid-period re-pull); the gap group
+   is a filer with no source at entity grain. */
+const DC_SOURCE_GROUPS=[
+  {id:'netsuite-us', name:'NetSuite — US Consolidated', kind:'erp', owner:'IT · Finance Systems', note:'Consolidated GL + intercompany subledger — feeds most affiliate forms.', lastSynced:'synced 2h ago', anchors:['Germany Manufacturing GmbH','Meridian Trading Pte','France Holdings SAS','Nordic Ventures AB'], filingCount:4, finalized:true, status:'connected'},
+  {id:'snowflake-fin', name:'Snowflake — Finance Warehouse', kind:'warehouse', owner:'Data Platform', note:'Modeled finance marts — revenue, equity, FX.', lastSynced:'synced nightly', anchors:['Germany Manufacturing GmbH'], filingCount:2, status:'connected'},
+  {id:'workday', name:'Workday HRIS', kind:'api', owner:'People Systems', note:'Headcount & compensation for the employment fields.', lastSynced:'synced 1d ago', anchors:['Germany Manufacturing GmbH'], filingCount:4, status:'connected'},
+  {id:'gap', name:'Brazil Services Ltda', kind:'drive', owner:'Regional finance (LatAm)', note:'No connected source at entity grain — chase the local owner or wire a source.', lastSynced:'—', anchors:['Brazil Services Ltda'], filingCount:1, status:'gap'},
+];
+/* Connections the agent suggests to close the remaining field gap. */
+const DC_SUGGESTED=[
+  {id:'netsuite-latam', name:'NetSuite — LatAm', kind:'erp', owner:'Regional finance (LatAm)', note:'Statutory ledgers for Brazil — carries the intercompany balance the US consolidation nets out.', covers:1},
+  {id:'drive-stat', name:'Statutory filings (shared drive)', kind:'drive', owner:'Group reporting', note:'Local stat accounts + trial balances by entity.', covers:1},
+];
+/* The finalized-close re-pull sample + the restatement it surfaces into triage. */
+const DC_FINALIZED_SAMPLE={fileName:'Germany_FY25_finalized_stat.pdf', fileType:'PDF', findings:[
+  {label:"Owners' equity (finalized)", value:'$118,900,000', foundIn:'page 5 · balance sheet'},
+  {label:'Δ vs provisional cut', value:'+$1,200,000', foundIn:'restatement note'},
+]};
+/* People/groups the reviewer can assign as data provider or reviewer. */
+const DC_ASSIGNEE_GROUPS=[
+  {id:'grp-groupreporting', name:'Group Reporting', kind:'group', detail:'Corporate consolidation'},
+  {id:'grp-emea', name:'EMEA Shared Services', kind:'group', detail:'Regional finance — EMEA'},
+  {id:'grp-latam', name:'LatAm Finance', kind:'group', detail:'Regional finance — LatAm'},
+];
+function dcAssignees(){ return [...DC_ASSIGNEE_GROUPS, ...ROSTER.map(p=>({id:'u-'+p.i, name:p.n, kind:'user', detail:'', c:p.c}))]; }
+function dcAssigneeById(id){ return id?dcAssignees().find(a=>a.id===id):null; }
+function dcAssigneeName(id){ const a=dcAssigneeById(id); return a?a.name:(id||'—'); }
+
+/* ---- resolver: value + year-over-year movement for a field on an entity ---- */
+/* Variance (% YoY) per field kind — most drift a little; Germany R&D breaches
+   the 25% tolerance to drive the variance triage item. */
+const DC_VAR={sales:5.5, netIncome:8, assets:3, rnd:12, comp:6, ppe:2, liab:4, equity:3, emp:4, ic:0};
+function dcEntityFin(e){
+  const assets=e.assets, sales=e.sales, ni=e.netIncome;
+  const liab=assets!=null?Math.round(assets*0.42):null;
+  const equity=(assets!=null&&liab!=null)?assets-liab:null;
+  const ppe=assets!=null?Math.round(assets*0.30):null;
+  const emp=sales!=null?Math.max(20,Math.round(sales/180)):null;
+  const comp=emp!=null?Math.round(emp*95):null;
+  const rnd=sales!=null?Math.round(sales*0.04):null;
+  const ic=assets!=null?Math.round(assets*0.02):null;
+  return {assets,sales,netIncome:ni,liab,equity,ppe,emp,comp,rnd,ic};
+}
+function dcFilingEntities(){ return RPT.entities.filter(e=>!e.reporter && isFiling(curForm(e))); }
+function dcEntityByName(name){ return RPT.entities.find(e=>e.name===name); }
+function dcKey(name,fid){ return name+'|'+fid; }
+function dcFieldResolve(e, def){
+  const key=dcKey(e.name,def.id);
+  const choice=RPT.dcChoices[key];
+  const coll = choice ? choice.coll : def.coll;
+  const src  = choice ? choice.src  : def.src;
+  const col  = choice ? choice.col  : def.col;
+  const conf = choice ? choice.conf : def.conf;
+  const fin=dcEntityFin(e);
+  let value=null, raw=null;
+  if(coll!=='unmapped'){
+    switch(def.kind){
+      case 'name':    value=e.name; break;
+      case 'country': value=e.country; break;
+      case 'city':    value=RPT_CITY[e.country]||'—'; break;
+      case 'fye':     value='12/31/2025'; break;
+      case 'own':     value=(e.own!=null?e.own+'%':'100%'); break;
+      case 'emp':     raw=fin.emp; value=raw!=null?raw.toLocaleString('en-US'):null; break;
+      default:        raw=fin[def.kind]; value=raw!=null?fmtRev(raw):null;
+    }
+  }
+  let v=DC_VAR[def.kind]; if(def.kind==='rnd' && e.name.indexOf('Germany')===0) v=69;
+  let prior=null, variancePct=null;
+  if(raw!=null && v!=null && v>0){ const p=Math.round(raw/(1+v/100)); prior=fmtRev(p); variancePct=v; }
+  let status = def.status||'ok';
+  if(choice) status = choice.coll==='manual' ? 'ok' : 'confirmed';
+  if(RPT.dcConfirmed[key]) status='confirmed';
+  return {def, coll, src, col, conf, value, raw, prior, variancePct, status, key};
+}
+function dcResolvedRows(e){ return DC_FIELDS.map(def=>dcFieldResolve(e,def)); }
+function dcSummary(rows){
+  const s={total:rows.length, source:0, needsReview:0, unmapped:0, manual:0};
+  rows.forEach(r=>{
+    if(r.coll==='source') s.source++;
+    else if(r.coll==='manual') s.manual++;
+    else if(r.coll==='unmapped') s.unmapped++;
+    if(r.status==='needs_review') s.needsReview++;
+  });
+  return s;
+}
+function dcCoveragePct(e){ const s=dcSummary(dcResolvedRows(e)); return Math.round(s.source/s.total*100); }
+
+/* ============ Surface A — Source data ============ */
+function dcSourceDataSection(){
+  const ents=dcFilingEntities();
+  const unsourced=ents.filter(e=>e.netIncome==null); // Brazil — no source at entity grain
+  const total=ents.length, sourced=total-unsourced.length;
+  const pct=total?Math.round(sourced/total*100):0;
+  const connCount=DC_SOURCE_GROUPS.filter(g=>g.status==='connected').length;
+  // (1) Forms-with-a-source headline
+  const cov=`<div class="dc-cov"><div class="dc-cov-main"><div class="dc-cov-h">Forms with a source</div><div class="dc-cov-sub">The report is ${total} affiliate forms — one per entity — each drawing from its own source. This is the share with a connected source across ${connCount} sources.</div></div><div class="dc-cov-fig"><div class="dc-cov-pct">${pct}%</div><div class="dc-cov-den">${sourced} of ${total} forms</div></div></div>
+    <div class="dc-bar ${pct>=90?'good':''}"><i style="width:${pct}%"></i></div>
+    ${unsourced.length?`<div class="dc-cov-warn">${OB_ICONS.info}<span>${unsourced.length} form${unsourced.length===1?'':'s'} still ${unsourced.length===1?'has':'have'} no connected source — see “Needs a source” below.</span></div>`:''}`;
+  // (2) Sources — by source / by form
+  const toggle=`<div class="col-toggle"><button class="col-tog ${RPT.dcSourcesView==='source'?'on':''}" onclick="dcSetSourcesView('source')">By source</button><button class="col-tog ${RPT.dcSourcesView==='form'?'on':''}" onclick="dcSetSourcesView('form')">By form</button></div>`;
+  const sources = RPT.dcSourcesView==='source' ? dcSourcesBySource() : dcSourcesByForm();
+  const srcCard=`<div class="dc-sub"><div class="dc-sub-h">${OB_ICONS.src}Sources${toggle}</div>${sources}</div>`;
+  // (3) Field coverage within a form
+  const fieldCov=dcFieldCoverage();
+  // (4) Suggested sources
+  const suggested=dcSuggestedSources();
+  return agentCard({icon:OB_ICONS.src,name:'Source data',tag:'Data collection',role:'Where the numbers come from, and how much of each form they fill. Re-pull any source to catch what moved, open a form to audit its fields, or wire a suggested source to close the gap.',body:cov+srcCard+fieldCov+suggested});
+}
+function dcSourcesBySource(){
+  const rows=DC_SOURCE_GROUPS.map(g=>{
+    if(g.status==='gap') return '';
+    const spans=g.filingCount>1;
+    const meta=CONN_KIND_META[g.kind]||{};
+    const anchors=g.anchors.map(a=>`<button class="dc-anchor" onclick="dcOpenForm('${escAttr(a)}')">${a}</button>`).join('');
+    const refresh=g.finalized?dcFinalizedRefresh(g):dcStandardRefresh(g);
+    return `<div class="conn-lib-row"><span class="conn-lib-ic">${meta.icon||OB_ICONS.src}</span><div class="conn-lib-main"><div class="conn-lib-name">${g.name} <span class="pill ${spans?'green':'blue'}">${spans?`Feeds ${g.filingCount} forms`:'Scoped to 1 entity'}</span></div><div class="conn-lib-detail">${g.note}</div><div class="conn-lib-meta">${g.owner}</div><div class="dc-anchors">${anchors}</div>${refresh}</div><button class="chipbtn" onclick="dcOpenFormBySource('${g.id}')">${OB_ICONS.eye}View fields</button></div>`;
+  }).join('');
+  const gap=DC_SOURCE_GROUPS.find(g=>g.status==='gap');
+  const gapHtml=gap?`<div class="dc-unsourced"><div class="dc-unsourced-h">${OB_ICONS.info}<span>Needs a source</span><span class="pill amber">${gap.filingCount} form${gap.filingCount===1?'':'s'}</span></div><div class="dc-unsourced-m">${gap.note}</div><div class="gap-row"><div class="gap-main"><div class="gap-h"><button class="dc-anchor" onclick="dcOpenForm('${escAttr(gap.anchors[0])}')">${gap.anchors[0]}</button></div><div class="gap-m">${gap.owner}</div></div><div class="gap-actions"><button class="chipbtn" onclick="dcConnectSource('${gap.id}')">${OB_ICONS.src}Connect a source</button></div></div></div>`:'';
+  return `<div class="conn-lib-list">${rows}</div>${gapHtml}`;
+}
+function dcSourcesByForm(){
+  const ents=dcFilingEntities();
+  const cards=ents.map(e=>{
+    const s=dcSummary(dcResolvedRows(e)); const pct=Math.round(s.source/s.total*100);
+    const unsourced=e.netIncome==null;
+    const primary=unsourced?'No connected source':(DC_SOURCE_NAME['netsuite-us']);
+    const badges=[]; if(s.needsReview) badges.push(`<span class="pill amber">${s.needsReview} to review</span>`); if(s.unmapped) badges.push(`<span class="pill red">${s.unmapped} unmapped</span>`); if(s.manual) badges.push(`<span class="pill violet">${s.manual} manual</span>`);
+    return `<button class="dc-formcard" onclick="dcOpenForm('${escAttr(e.name)}')"><div class="dc-fc-top"><span class="dc-fc-name">${e.name}</span><span class="pill ${unsourced?'amber':'blue'}">${curForm(e)}</span></div><div class="dc-fc-src ${unsourced?'warn':''}">${unsourced?OB_ICONS.info:OB_ICONS.src}${primary}</div><div class="dc-fc-cov"><div class="dc-fc-cov-lab"><span>${s.source} of ${s.total} from a source</span><span class="dc-fc-pct">${pct}%</span></div><div class="dc-bar ${pct>=90?'good':(unsourced?'warn':'')}"><i style="width:${pct}%"></i></div></div><div class="dc-fc-badges">${badges.join('')||`<span class="pill grey">complete</span>`}</div></button>`;
+  }).join('');
+  return `<div class="dc-formgrid">${cards}</div>`;
+}
+function dcFinalizedRefresh(g){
+  if(RPT.dcRefreshed){
+    return `<div class="dc-refresh done"><span class="pill green">${OB_ICONS.check} Finalized · re-pulled</span><span class="dc-refresh-m">Germany finalized close — 1 figure changed, waiting in triage.</span></div>`;
+  }
+  return `<div class="dc-refresh"><span class="pill grey">Provisional</span><span class="dc-refresh-m">${g.lastSynced}</span><button class="chipbtn" onclick="dcRefreshFinalized()">${OB_ICONS.arrow}Re-pull</button></div>`;
+}
+function dcStandardRefresh(g){
+  const done=RPT.dcStdRefresh&&RPT.dcStdRefresh[g.id];
+  if(done) return `<div class="dc-refresh done"><span class="pill green">${OB_ICONS.check} No changes</span><span class="dc-refresh-m">Every figure still ties to what the agent drafted.</span></div>`;
+  return `<div class="dc-refresh"><span class="pill grey">${g.lastSynced}</span><button class="chipbtn" onclick="dcRefreshStandard('${g.id}')">${OB_ICONS.arrow}Re-pull</button></div>`;
+}
+function dcFieldCoverage(){
+  // representative BE-11B: how much of a sourced form the sources resolve
+  const rows=DC_FIELDS; const total=rows.length;
+  const covered=rows.filter(f=>f.coll==='source').length;
+  const manual=rows.filter(f=>f.coll==='manual');
+  const unmapped=rows.filter(f=>f.coll==='unmapped');
+  const pct=Math.round(covered/total*100);
+  const bySource={}; rows.forEach(f=>{ if(f.coll==='source'){ bySource[f.src]=(bySource[f.src]||0)+1; } });
+  const provided=Object.keys(bySource).map(sid=>`<div class="dc-prov-row"><span class="conn-lib-ic">${(CONN_KIND_META[(DC_SOURCE_GROUPS.find(g=>g.id===sid)||{}).kind]||{}).icon||OB_ICONS.src}</span><div class="dc-prov-main"><div class="dc-prov-name">${DC_SOURCE_NAME[sid]||sid}</div><div class="dc-prov-sub">${bySource[sid]} of ${total} fields</div></div><span class="pill green">${Math.round(bySource[sid]/total*100)}%</span></div>`).join('');
+  const open=[...unmapped,...manual].map(f=>`<div class="dc-open-row ${f.coll==='unmapped'?'unmapped':'manual'}"><span class="dc-open-name">${f.label}</span><span class="pill ${f.coll==='unmapped'?'red':'violet'}">${f.coll==='unmapped'?'no source':'manual'}</span></div>`).join('');
+  return `<div class="dc-sub"><div class="dc-sub-h">${OB_ICONS.map}Field coverage within a form<span class="dc-sub-fig">${pct}% · ${covered} of ${total}</span></div><div class="dc-bar ${pct>=90?'good':''}"><i style="width:${pct}%"></i></div><div class="dc-cov-cols"><div><div class="dc-col-h">Provided by</div>${provided}</div><div><div class="dc-col-h">Manual / still open (${open? (unmapped.length+manual.length):0})</div>${open||'<div class="dc-open-row"><span class="dc-open-name">Every required field is sourced.</span></div>'}</div></div></div>`;
+}
+function dcSuggestedSources(){
+  const rows=DC_SUGGESTED.map(s=>{
+    const meta=CONN_KIND_META[s.kind]||{};
+    const req=!!(RPT.dcSuggested&&RPT.dcSuggested[s.id]);
+    return `<div class="conn-lib-row"><span class="conn-lib-ic">${meta.icon||OB_ICONS.src}</span><div class="conn-lib-main"><div class="conn-lib-name">${s.name} <span class="pill blue">+${s.covers} open field${s.covers===1?'':'s'}</span></div><div class="conn-lib-detail">${s.note}</div><div class="conn-lib-meta">${s.owner}</div></div><button class="chipbtn" onclick="dcRequestSuggested('${s.id}')">${req?OB_ICONS.check+' Requested':'Connect'}</button></div>`;
+  }).join('');
+  return `<div class="dc-sub"><div class="dc-sub-h">${OB_ICONS.spark}Suggested sources to close the gap</div><div class="conn-lib-list">${rows}</div></div>`;
+}
+function dcSetSourcesView(v){ if(!RPT) return; RPT.dcSourcesView=v; renderReport(); }
+function dcRefreshFinalized(){ if(!RPT) return; RPT.dcRefreshed=true; rptLog('agent','Re-pulled the finalized close','Germany FY25 — 1 figure moved vs the provisional cut'); showToast('Finalized close re-pulled — 1 change in triage'); renderReport(); }
+function dcRefreshStandard(id){ if(!RPT) return; RPT.dcStdRefresh=RPT.dcStdRefresh||{}; RPT.dcStdRefresh[id]=true; const g=DC_SOURCE_GROUPS.find(x=>x.id===id); rptLog('agent','Re-pulled '+(g?g.name:id),'No changes — every figure still ties'); showToast('Re-pulled — no changes'); renderReport(); }
+function dcConnectSource(id){ if(!RPT) return; rptLog('human','You started connecting a source', DC_SOURCE_GROUPS.find(g=>g.id===id)?.name||id); showToast('Connect a source (demo)'); }
+function dcRequestSuggested(id){ if(!RPT) return; RPT.dcSuggested=RPT.dcSuggested||{}; RPT.dcSuggested[id]=!RPT.dcSuggested[id]; const s=DC_SUGGESTED.find(x=>x.id===id); rptLog('human',RPT.dcSuggested[id]?'You requested a source':'You cancelled a source request', s?s.name:id); renderReport(); }
+
+/* ============ Surface D — Triage ============ */
+function dcTriageItems(){
+  const items=[];
+  (SOURCE_PULL.reconciliationBreaks||[]).forEach(b=>items.push({id:b.id, kind:'reconciliation', title:b.affiliate, detail:b.description, tag:'Δ '+b.delta, blocking:false}));
+  const sf=SOURCE_PULL.scopeFlip; if(sf) items.push({id:'scope-br', kind:'scope', title:sf.affiliate, detail:`${sf.was} → ${sf.now} · ${sf.reason}`, tag:'scope', blocking:true});
+  items.push({id:'var-de-rnd', kind:'variance', title:'Germany Manufacturing GmbH', detail:'R&D expense +69% YoY — well above the 25% variance tolerance. Confirm it’s expected or ask the data owner.', tag:'+69% YoY', blocking:false});
+  if(RPT.dcRefreshed) items.push({id:'final-de-eq', kind:'refresh', title:'Germany Manufacturing GmbH', detail:"Owners’ equity restated +$1.2M after the finalized statutory close vs the provisional cut the agent drafted from.", tag:'restated', blocking:false});
+  return items.filter(i=>!RPT.dcTriage[i.id]);
+}
+const DC_TRI_META={reconciliation:{ic:OB_ICONS.info,label:'Reconciliation break',tone:'amber'},scope:{ic:OB_ICONS.target,label:'Scope change',tone:'red'},variance:{ic:OB_ICONS.info,label:'Variance',tone:'amber'},refresh:{ic:OB_ICONS.arrow,label:'Finalized close',tone:'blue'}};
+function dcTriagePanel(){
+  const items=dcTriageItems();
+  if(!items.length){
+    const resolved=Object.keys(RPT.dcTriage).length;
+    if(!resolved) return '';
+    return `<div class="dc-triage clear"><div class="dc-tri-head">${OB_ICONS.check}<span>Triage clear — every collection exception is resolved.</span></div></div>`;
+  }
+  const blocking=items.some(i=>i.blocking);
+  const rows=items.map(it=>{
+    const m=DC_TRI_META[it.kind]||{};
+    let acts='';
+    if(it.kind==='reconciliation'){
+      const fid = it.id==='recon-ic'?'f7':(it.id==='recon-nordic'?'f8':null);
+      const chase = fid&&PROVIDER_TASKS[fid]?`<button class="chipbtn" onclick="dcTriageChase('${it.id}','${fid}')">${OB_ICONS.people}Ask the owner</button>`:'';
+      acts=`${chase}<button class="chipbtn" onclick="dcResolveTriage('${it.id}','accepted')">${OB_ICONS.check}Accept with note</button>`;
+    } else if(it.kind==='variance'){
+      acts=`<button class="chipbtn" onclick="dcResolveTriage('${it.id}','confirmed')">${OB_ICONS.check}Confirm expected</button><button class="chipbtn" onclick="dcResolveTriage('${it.id}','asked')">${OB_ICONS.people}Ask data owner</button>`;
+    } else if(it.kind==='scope'){
+      acts=`<button class="chipbtn" onclick="dcResolveTriage('${it.id}','applied')">${OB_ICONS.check}Apply the scope change</button><button class="chipbtn" onclick="dcResolveTriage('${it.id}','kept')">Keep current scope</button>`;
+    } else if(it.kind==='refresh'){
+      acts=`<button class="chipbtn" onclick="dcResolveTriage('${it.id}','accepted')">${OB_ICONS.check}Accept restated figure</button>`;
+    }
+    return `<div class="dc-tri-row ${m.tone}"><div class="dc-tri-ic">${m.ic}</div><div class="dc-tri-main"><div class="dc-tri-t">${it.title} <span class="pill ${m.tone==='red'?'red':(m.tone==='blue'?'blue':'amber')}">${m.label}</span>${it.blocking?'<span class="pill red">blocking</span>':''}</div><div class="dc-tri-m">${it.detail}</div></div><div class="dc-tri-tag">${it.tag?`<span class="pill grey">${it.tag}</span>`:''}</div><div class="dc-tri-acts">${acts}</div></div>`;
+  }).join('');
+  const role=blocking?'The agent paused on a blocking scope change. Resolve it to let the run continue; the other exceptions can be cleared in any order.':'Exceptions the agent surfaced while collecting — reconciliation breaks, a variance flag, and anything a re-pull moved. Resolve each with the evidence behind it.';
+  return agentCard({icon:OB_ICONS.shield,name:'Triage',tag:'Data collection',role,body:`<div class="dc-triage${blocking?' blocking':''}"><div class="dc-tri-list">${rows}</div></div>`});
+}
+function dcResolveTriage(id,res){
+  if(!RPT) return; RPT.dcTriage[id]=res;
+  const label={accepted:'accepted with a note',confirmed:'confirmed as expected',asked:'asked the data owner',applied:'applied the scope change',kept:'kept the current scope'}[res]||res;
+  rptLog('commit','You resolved a triage item', id+' — '+label);
+  showToast('Triage item resolved');
+  renderReport();
+}
+function dcTriageChase(id,fid){ if(!RPT) return; RPT.dcTriage[id]='chased'; rptLog('human','You opened a chase task from triage', fid); renderReport(); rptOpenPacket(fid); }
+
+/* ============ Surface B + C — per-entity field grid & responsibility ============ */
+function dcOpenForm(name){ if(!RPT) return; const e=dcEntityByName(name); if(!e){ showToast('No form for '+name); return; } RPT.dcForm=name; RPT.dcOpen={}; RPT.dcAssignOpen={}; RPT.dcApplyOpen=null; rptLog('human','You opened '+name+'’s field grid','Auditing the source mapping at field grain'); renderReport(); scrollToSec('mapping'); }
+function dcOpenFormBySource(sid){ const g=DC_SOURCE_GROUPS.find(x=>x.id===sid); if(!g) return; const name=g.anchors.find(a=>dcEntityByName(a))||g.anchors[0]; dcOpenForm(name); }
+function dcCloseForm(){ if(!RPT) return; RPT.dcForm=null; renderReport(); scrollToSec('mapping'); }
+function dcFormGridView(name){
+  const e=dcEntityByName(name); if(!e) return dcCloseForm();
+  const ents=dcFilingEntities(); const idx=ents.findIndex(x=>x.name===name);
+  const prev=idx>0?ents[idx-1]:null, next=idx>=0&&idx<ents.length-1?ents[idx+1]:null;
+  const rows=dcResolvedRows(e); const s=dcSummary(rows); const pct=Math.round(s.source/s.total*100);
+  const nav=`<div class="dc-gridnav"><button class="chipbtn" ${prev?'':'disabled'} onclick="${prev?`dcOpenForm('${escAttr(prev.name)}')`:''}">${OB_ICONS.arrow2||'←'} Prev</button><button class="chipbtn" ${next?'':'disabled'} onclick="${next?`dcOpenForm('${escAttr(next.name)}')`:''}">Next →</button><select class="col-sel dc-jump" onchange="dcOpenForm(this.value)">${ents.map(x=>`<option value="${escAttr(x.name)}" ${x.name===name?'selected':''}>${x.name} · ${curForm(x)}</option>`).join('')}</select><span class="dc-gridnav-idx">Form ${idx+1} of ${ents.length}</span></div>`;
+  const header=`<div class="dc-gridhead"><div class="dc-gridhead-main"><div class="dc-gridhead-name">${e.name} <span class="pill blue">${curForm(e)}</span></div><div class="dc-gridhead-sub">${e.country} · ${rows.length} fields · primary source <strong>${e.netIncome==null?'none connected':DC_SOURCE_NAME['netsuite-us']}</strong></div></div><div class="dc-gridhead-fig"><div class="dc-cov-pct">${pct}%</div><div class="dc-cov-den">${s.source} of ${s.total} from a source</div></div></div>
+    <div class="dc-countchips"><span class="pill green">From source: ${s.source}</span><span class="pill amber">Needs review: ${s.needsReview}</span><span class="pill red">Unmapped: ${s.unmapped}</span><span class="pill violet">Manual: ${s.manual}</span></div>
+    <div class="dc-grid-note">${OB_ICONS.info} Numeric lines show the FY24 figure and their year-over-year change; each cell shades deeper as the movement approaches the 25% variance tolerance.</div>`;
+  const assign=dcFormAssignCard(e);
+  const toolbar=dcGridToolbar(e, rows);
+  const back=`<button class="ghost fp-back" onclick="dcCloseForm()">${OB_ICONS.arrow2||'←'} Back to Source data</button>`;
+  return `<div class="dc-drillin">${back}<div class="dc-gridcard">${nav}${header}</div>${assign}${toolbar}<div id="dcGridList">${dcGridListHtml(e)}</div></div>`;
+}
+function dcGridMatches(r, f){
+  if(f.collection!=='all'){
+    const isUnmapped=r.coll==='unmapped', isManual=r.coll==='manual', isSource=r.coll==='source';
+    const ok=f.collection==='unmapped'?isUnmapped:f.collection==='manual'?isManual:isSource;
+    if(!ok) return false;
+  }
+  if(f.status!=='all' && r.status!==f.status) return false;
+  if(f.q && f.q.trim()){ const q=f.q.trim().toLowerCase(); const hay=(r.def.label+' '+r.def.master+' '+(r.col||'')+' '+r.def.item).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+  return true;
+}
+function dcGridToolbar(e, rows){
+  const f=RPT.dcFilter;
+  const chip=(key,val,lab)=>`<button class="col-tog ${f[key]===val?'on':''}" onclick="dcSetFilter('${key}','${f[key]===val?'all':val}')">${lab}</button>`;
+  const shown=rows.filter(r=>dcGridMatches(r,f)).length;
+  const confirmable=rows.filter(r=>r.status==='needs_review'&&r.coll==='source'&&r.conf!=null&&dcGridMatches(r,f));
+  const bulk=confirmable.length?`<button class="chipbtn" onclick="dcBulkConfirm('${escAttr(e.name)}',80)">${OB_ICONS.check}Confirm ${confirmable.length} ≥80%</button>`:'';
+  return `<div class="dc-toolbar"><div class="col-toggle">${chip('collection','source','From source')}${chip('collection','unmapped','Unmapped')}${chip('collection','manual','Manual')}</div><div class="col-toggle">${chip('status','needs_review','Review')}${chip('status','confirmed','Confirmed')}</div><div class="dc-toolbar-r"><input class="dc-search" placeholder="Search fields…" value="${escAttr(f.q||'')}" oninput="dcSetSearch(this.value)"/>${bulk}<span class="dc-shown" id="dcShown">Showing ${shown} of ${rows.length}</span></div></div>`;
+}
+function dcGridListHtml(e){
+  const f=RPT.dcFilter;
+  const rows=dcResolvedRows(e).filter(r=>dcGridMatches(r,f));
+  if(!rows.length) return `<div class="dc-empty">No fields match these filters.</div>`;
+  let h='';
+  DC_FIELD_SECTIONS.forEach((sec,si)=>{
+    const list=rows.filter(r=>r.def.sec===si); if(!list.length) return;
+    h+=`<div class="dc-fsec"><div class="dc-fsec-h">${sec}<span class="dc-fsec-n">${list.length}</span></div>${list.map(r=>dcFieldRow(e,r)).join('')}</div>`;
+  });
+  return h;
+}
+function dcVarShade(pct){ if(pct==null) return ''; const m=Math.abs(pct); if(m>=25) return 'danger'; if(m>=10) return 'warn'; if(m>=3) return 'soft'; return ''; }
+function dcVarChip(pct){ if(pct==null) return ''; const up=pct>=0, m=Math.abs(pct); const tone=m>=25?'danger':m>=10?'warn':'muted'; return `<span class="dc-varchip ${tone}">${up?'▲ +':'▼ −'}${m}%</span>`; }
+function dcMapBadge(r){
+  if(r.coll==='manual') return `<span class="pill violet">Manual</span>`;
+  if(r.coll==='unmapped') return `<span class="pill red">Unmapped</span>`;
+  const conf=r.conf==null?'':`${r.conf}% match`;
+  const tone=r.status==='needs_review'?'amber':'green';
+  return `<span class="pill ${tone}">${conf}</span>${r.status==='needs_review'?'<span class="dc-reviewtag">review</span>':(r.status==='confirmed'?`<span class="dc-reviewtag ok">${OB_ICONS.check}confirmed</span>`:'')}`;
+}
+function dcFieldRow(e,r){
+  const def=r.def, key=r.key, open=!!RPT.dcOpen[key], aopen=!!RPT.dcAssignOpen[key];
+  const canConfirm=r.status==='needs_review'&&r.coll==='source';
+  const hasChoice=(def.cands&&def.cands.length)||def.coll!=='manual';
+  const mapFrom = r.coll==='manual'?'<em class="dc-muted">manual entry</em>':(r.coll==='unmapped'?'<em class="dc-warn">no source</em>':`<code class="dc-col">${r.col}</code>`);
+  const valBlock = r.value!=null
+    ? `<div class="dc-val ${dcVarShade(r.variancePct)}"><span class="dc-val-v">${r.value}</span>${(r.prior!=null&&r.variancePct!=null)?`<span class="dc-val-prior">FY24 ${r.prior} ${dcVarChip(r.variancePct)}</span>`:''}</div>`
+    : (def.coll==='manual'?'<span class="dc-muted">Awaiting entry</span>':'<span class="dc-muted">No value</span>');
+  const srcName = (r.src&&r.coll==='source')?`<div class="dc-val-src">${DC_SOURCE_NAME[r.src]||r.src}</div>`:'';
+  return `<div class="dc-field">
+    <div class="dc-field-main"><div class="dc-field-lab"><span class="dc-field-item">${def.item}</span><span class="dc-field-name">${def.label}</span></div><div class="dc-field-map"><code class="dc-master">${def.master}</code><span class="dc-arrow">←</span>${mapFrom}</div></div>
+    <div class="dc-field-val">${valBlock}${srcName}</div>
+    <div class="dc-field-act">${dcMapBadge(r)}${canConfirm?`<button class="dc-link ok" onclick="dcConfirmField('${escAttr(e.name)}','${def.id}')">${OB_ICONS.check}Confirm</button>`:''}${hasChoice?`<button class="dc-link" onclick="dcToggleOpen('${escAttr(e.name)}','${def.id}')">${open?'Close source':'Choose source'}</button>`:''}<button class="dc-link" onclick="dcToggleAssign('${escAttr(e.name)}','${def.id}')">${aopen?'Close assign':'Assign'}</button></div>
+    <div class="dc-field-resp">${dcFieldRespSummary(e,def.id)}</div>
+    ${aopen?dcFieldAssignEditor(e,def):''}
+    ${open?dcSourcePicker(e,r):''}
+  </div>`;
+}
+function dcSourcePicker(e,r){
+  const def=r.def; const cands=def.cands||[];
+  const opts=cands.map((c,i)=>{
+    const sel=r.coll==='source'&&r.col===c.col;
+    const cv=dcCandValue(e,def,c);
+    return `<button class="dc-pick ${sel?'sel':''}" onclick="dcChooseSource('${escAttr(e.name)}','${def.id}',${i})"><span class="dc-pick-dot">${sel?OB_ICONS.check:''}</span><span class="dc-pick-main"><span class="dc-pick-top"><code class="dc-col">${c.col}</code><span class="dc-pick-src">${DC_SOURCE_NAME[c.src]||c.src}</span>${i===0?'<span class="pill blue">recommended</span>':''}</span><span class="dc-pick-note">${c.note}</span></span><span class="dc-pick-fig">${cv?`<span class="dc-val ${dcVarShade(cv.variancePct)}"><span class="dc-val-v">${cv.value}</span></span>`:''}<span class="conf-badge ${c.conf>=90?'high':c.conf>=60?'medium':'low'}">${c.conf}%</span></span></button>`;
+  }).join('');
+  const manualSel=r.coll==='manual';
+  return `<div class="dc-picker">${cands.length?`<div class="dc-picker-h">Possible sources</div>${opts}`:`<div class="dc-picker-h">No connected source carries this field at entity grain — collect it manually.</div>`}<button class="dc-pick manual ${manualSel?'sel':''}" onclick="dcChooseSource('${escAttr(e.name)}','${def.id}','manual')"><span class="dc-pick-dot">${manualSel?OB_ICONS.check:''}</span><span class="dc-pick-main"><span class="dc-pick-top"><span class="dc-field-name">Manual collection</span>${manualSel?'<span class="pill violet">current</span>':''}</span><span class="dc-pick-note">No source — the preparer keys this figure in each period.</span></span></button></div>`;
+}
+function dcCandValue(e,def,c){
+  // A candidate reads the same underlying figure but may nudge it (modeled marts
+  // net differently) — enough to make switching sources a comparison of numbers.
+  const base=dcFieldResolve(e,def); if(base.raw==null) return null;
+  const factor=c.conf>=90?1:(c.col.indexOf('MART')>=0?0.97:1.0);
+  const raw=Math.round(base.raw*factor);
+  let v=DC_VAR[def.kind]; if(def.kind==='rnd'&&e.name.indexOf('Germany')===0) v=69;
+  const variancePct=(v&&v>0)?v:null;
+  return {value:fmtRev(raw), variancePct};
+}
+function dcChooseSource(name,fid,idx){
+  if(!RPT) return; const e=dcEntityByName(name); const def=DC_FIELDS.find(d=>d.id===fid); if(!e||!def) return;
+  const key=dcKey(name,fid);
+  if(idx==='manual'){ RPT.dcChoices[key]={coll:'manual',src:null,col:null,conf:null}; rptLog('human','You set '+def.label+' to manual', name); }
+  else { const c=def.cands[idx]; if(!c) return; RPT.dcChoices[key]={coll:'source',src:c.src,col:c.col,conf:c.conf}; rptLog('human','You chose a source for '+def.label, name+' · '+(DC_SOURCE_NAME[c.src]||c.src)+' · '+c.col); }
+  delete RPT.dcConfirmed[key]; RPT.dcOpen[key]=false;
+  showToast('Source recorded — '+def.label);
+  renderReport();
+}
+function dcConfirmField(name,fid){ if(!RPT) return; const key=dcKey(name,fid); RPT.dcConfirmed[key]=true; const def=DC_FIELDS.find(d=>d.id===fid); rptLog('commit','You confirmed a mapping', name+' · '+(def?def.label:fid)); showToast('Mapping confirmed'); renderReport(); }
+function dcBulkConfirm(name,min){ if(!RPT) return; const e=dcEntityByName(name); if(!e) return; const f=RPT.dcFilter; let n=0; dcResolvedRows(e).forEach(r=>{ if(r.status==='needs_review'&&r.coll==='source'&&r.conf!=null&&r.conf>=min&&dcGridMatches(r,f)){ RPT.dcConfirmed[r.key]=true; n++; } }); rptLog('commit','You bulk-confirmed mappings', name+' · '+n+' at ≥'+min+'%'); showToast('Confirmed '+n+' mapping'+(n===1?'':'s')); renderReport(); }
+function dcToggleOpen(name,fid){ if(!RPT) return; const key=dcKey(name,fid); RPT.dcOpen[key]=!RPT.dcOpen[key]; renderReport(); }
+function dcToggleAssign(name,fid){ if(!RPT) return; const key=dcKey(name,fid); RPT.dcAssignOpen[key]=!RPT.dcAssignOpen[key]; renderReport(); }
+function dcSetFilter(key,val){ if(!RPT) return; RPT.dcFilter[key]=val; renderReport(); }
+function dcSetSearch(v){ if(!RPT) return; RPT.dcFilter.q=v; const e=dcEntityByName(RPT.dcForm); if(!e) return; const list=document.getElementById('dcGridList'); if(list) list.innerHTML=dcGridListHtml(e); const shown=document.getElementById('dcShown'); if(shown){ const n=dcResolvedRows(e).filter(r=>dcGridMatches(r,RPT.dcFilter)).length; shown.textContent='Showing '+n+' of '+DC_FIELDS.length; } }
+
+/* ---- Surface C: data responsibility (form + field), with apply-to-forms ---- */
+function dcEffAssignee(name,fid,role){
+  const fo=RPT.dcAssignField[dcKey(name,fid)]; if(fo&&fo[role]) return {id:fo[role], inherited:false};
+  const form=RPT.dcAssignForm[name]; if(form&&form[role]) return {id:form[role], inherited:true};
+  return {id:null, inherited:false};
+}
+function dcAssigneeSelect(cur,onchange){
+  const opts=['<option value="">— unassigned —</option>'].concat(dcAssignees().map(a=>`<option value="${a.id}" ${a.id===cur?'selected':''}>${a.kind==='group'?'▣ ':'◦ '}${a.name}</option>`)).join('');
+  return `<select class="col-sel dc-assign-sel" onchange="${onchange}">${opts}</select>`;
+}
+function dcFormAssignCard(e){
+  const a=RPT.dcAssignForm[e.name]||{};
+  const slot=(role,lab,glyph)=>{
+    const cur=a[role]||'';
+    const alsoN=dcApplyAlsoCount(e.name,role,cur,'form');
+    const applyKey=e.name+'|'+role;
+    const applyOpen=RPT.dcApplyOpen===applyKey;
+    return `<div class="dc-resp-slot"><div class="dc-resp-role">${glyph} ${lab} · whole form</div>${dcAssigneeSelect(cur,`dcSetFormAssign('${escAttr(e.name)}','${role}',this.value)`)}${cur?`<div class="dc-resp-tools">${alsoN?`<span class="pill green">also on ${alsoN} form${alsoN===1?'':'s'}</span>`:''}<button class="dc-link" onclick="dcToggleApply('${escAttr(e.name)}','${role}')">${applyOpen?'Close':'Apply to other forms'}</button></div>`:''}${applyOpen?dcApplyToFormsPanel(e.name,role,cur,'form'):''}</div>`;
+  };
+  return `<div class="dc-respcard"><div class="dc-respcard-h">${OB_ICONS.people}<div><div class="dc-respcard-t">Data responsibility</div><div class="dc-respcard-m">Who provides and who reviews this form’s data. Set it once for the whole form; reuse across many forms with “Apply to other forms,” or override a single line below.</div></div></div><div class="dc-resp-grid">${slot('provider','Data provider','📤')}${slot('reviewer','Data reviewer','🔎')}</div></div>`;
+}
+function dcApplyAlsoCount(name,role,id,scope,fid){
+  if(!id) return 0;
+  return dcFilingEntities().filter(x=>{
+    if(x.name===name) return false;
+    if(scope==='form'){ const a=RPT.dcAssignForm[x.name]; return a&&a[role]===id; }
+    return dcEffAssignee(x.name,fid,role).id===id;
+  }).length;
+}
+function dcFieldRespSummary(e,fid){
+  return ['provider','reviewer'].map(role=>{
+    const {id,inherited}=dcEffAssignee(e.name,fid,role);
+    const glyph=role==='provider'?'📤':'🔎'; const lab=role==='provider'?'Provider':'Reviewer';
+    return `<span class="dc-resp-sum"><span class="dc-resp-g">${glyph}</span><span class="dc-resp-l">${lab}:</span>${id?`<span class="dc-resp-n">${dcAssigneeName(id)}</span><span class="pill ${inherited?'grey':'blue'}">${inherited?'from form':'this field'}</span>`:'<span class="dc-muted">unassigned</span>'}</span>`;
+  }).join('');
+}
+function dcFieldAssignEditor(e,def){
+  const slot=(role,lab,glyph)=>{
+    const fo=RPT.dcAssignField[dcKey(e.name,def.id)]||{}; const cur=fo[role]||'';
+    return `<div class="dc-resp-slot"><div class="dc-resp-role">${glyph} ${lab} · this field</div>${dcAssigneeSelect(cur,`dcSetFieldAssign('${escAttr(e.name)}','${def.id}','${role}',this.value)`)}${cur?`<button class="dc-link" onclick="dcSetFieldAssign('${escAttr(e.name)}','${def.id}','${role}','')">Reset to form</button>`:''}</div>`;
+  };
+  return `<div class="dc-fieldassign"><div class="dc-resp-grid">${slot('provider','Data provider','📤')}${slot('reviewer','Data reviewer','🔎')}</div></div>`;
+}
+function dcApplyToFormsPanel(name,role,id,scope,fid){
+  const targets=dcFilingEntities().filter(x=>x.name!==name);
+  RPT.dcApplySel=RPT.dcApplySel||{};
+  const selKey=name+'|'+role+'|'+scope+'|'+(fid||'');
+  const sel=RPT.dcApplySel[selKey]||{};
+  const rows=targets.map(x=>`<label class="dc-apply-row"><input type="checkbox" ${sel[x.name]?'checked':''} onchange="dcApplyToggle('${escAttr(selKey)}','${escAttr(x.name)}')"/><span class="dc-apply-n">${x.name}</span><span class="pill grey">${curForm(x)}</span></label>`).join('');
+  const count=Object.keys(sel).filter(k=>sel[k]).length;
+  return `<div class="dc-apply"><div class="dc-apply-h"><span><strong>${dcAssigneeName(id)}</strong> will also ${role==='provider'?'provide':'review'} ${scope==='field'?'this line':'the whole form'} on every form you pick.</span><button class="dc-link" onclick="dcApplyAll('${escAttr(selKey)}')">Select all ${targets.length}</button></div><div class="dc-apply-list">${rows}</div><div class="dc-apply-foot"><button class="btn sec" onclick="dcToggleApply('${escAttr(name)}','${role}')">Cancel</button><button class="btn primary" ${count?'':'disabled'} onclick="dcApplyCommit('${escAttr(selKey)}','${escAttr(name)}','${role}','${scope}','${fid||''}','${escAttr(id)}')">Apply to ${count} form${count===1?'':'s'}</button></div></div>`;
+}
+function dcSetFormAssign(name,role,id){ if(!RPT) return; RPT.dcAssignForm[name]=RPT.dcAssignForm[name]||{}; if(id) RPT.dcAssignForm[name][role]=id; else delete RPT.dcAssignForm[name][role]; rptLog('human','You set the form '+role, name+' → '+(id?dcAssigneeName(id):'unassigned')); renderReport(); }
+function dcSetFieldAssign(name,fid,role,id){ if(!RPT) return; const k=dcKey(name,fid); RPT.dcAssignField[k]=RPT.dcAssignField[k]||{}; if(id) RPT.dcAssignField[k][role]=id; else delete RPT.dcAssignField[k][role]; const def=DC_FIELDS.find(d=>d.id===fid); rptLog('human','You set the field '+role, name+' · '+(def?def.label:fid)+' → '+(id?dcAssigneeName(id):'form default')); renderReport(); }
+function dcToggleApply(name,role){ if(!RPT) return; const k=name+'|'+role; RPT.dcApplyOpen=RPT.dcApplyOpen===k?null:k; renderReport(); }
+function dcApplyToggle(selKey,entName){ if(!RPT) return; RPT.dcApplySel=RPT.dcApplySel||{}; RPT.dcApplySel[selKey]=RPT.dcApplySel[selKey]||{}; RPT.dcApplySel[selKey][entName]=!RPT.dcApplySel[selKey][entName]; renderReport(); }
+function dcApplyAll(selKey){ if(!RPT) return; RPT.dcApplySel=RPT.dcApplySel||{}; const cur=RPT.dcApplySel[selKey]||{}; const targets=dcFilingEntities(); const all=targets.every(x=>x.name===RPT.dcForm||cur[x.name]); const nx={}; targets.forEach(x=>{ if(x.name!==RPT.dcForm) nx[x.name]=!all; }); RPT.dcApplySel[selKey]=nx; renderReport(); }
+function dcApplyCommit(selKey,name,role,scope,fid,id){ if(!RPT) return; const sel=(RPT.dcApplySel||{})[selKey]||{}; const picks=Object.keys(sel).filter(k=>sel[k]); picks.forEach(en=>{ if(scope==='form'){ RPT.dcAssignForm[en]=RPT.dcAssignForm[en]||{}; RPT.dcAssignForm[en][role]=id; } else { const k=dcKey(en,fid); RPT.dcAssignField[k]=RPT.dcAssignField[k]||{}; RPT.dcAssignField[k][role]=id; } }); RPT.dcApplyOpen=null; if(RPT.dcApplySel) RPT.dcApplySel[selKey]={}; rptLog('commit','You applied a '+role+' to other forms', dcAssigneeName(id)+' → '+picks.length+' form'+(picks.length===1?'':'s')); showToast('Applied to '+picks.length+' form'+(picks.length===1?'':'s')); renderReport(); }
 
 /* ================= MAPPING & COLLECTION TAB ================= */
 function gapCount(){ return RPT.fields.filter(f=>f.status==='gap'||f.status==='collecting').length; }
 function mappingTab(){
   let h='';
+  /* Step 1 — Connect data: pull the source, reconcile, preview & classify columns. */
+  if(!RPT.connected){ return connectDataStep(); }
+  /* Drill-in: auditing one entity's form at field grain (Surfaces B + C). */
+  if(RPT.dcForm){ return dcFormGridView(RPT.dcForm); }
+  h+=connectReceipt();
+  /* Step 2 — Map the pulled data to the BE-11 master fields. */
   if(!RPT.mapRun){
-    h+=agentCard({icon:OB_ICONS.map,name:'Mapping Agent',tag:'Data collection',role:'Maps every source field to the BE-11 master field model, with a confidence on each match. Then you validate and fill any gaps with more sources or a collection agent.',cta:ctaRun("rptMapRun()",'Map my data for me',OB_ICONS.map,'The Operator aligns sources to the master field model.',RPT.mapping,'Mapping sources to master fields…')});
+    h+=agentCard({icon:OB_ICONS.map,name:'Mapping Agent',tag:'Data collection',role:'Maps every source field to the BE-11 master field model, with a confidence on each match. Then you validate and fill any gaps with more sources or a collection agent.',cta:ctaRun("rptMapRun()",'Map my data for me',OB_ICONS.map,'The Operator aligns the pulled columns to the master field model.',RPT.mapping,'Mapping sources to master fields…')});
     return h;
   }
+  /* Surface D — Triage: exceptions the pull surfaced (blocking scope first). */
+  h+=dcTriagePanel();
+  /* Surface A — Source data: coverage, sources, field coverage, suggestions. */
+  h+=dcSourceDataSection();
   h+=agentCard({icon:OB_ICONS.map,name:'Mapping Agent',tag:'Data collection',role:'Every field is mapped to its master-field concept and source. Validate the matches and resolve any gaps below — adding a source re-runs the mapping.',body:mapMetrics()+mapTable()+(RPT.remapping?`<div class="remap-note"><span class="dots"><i></i><i></i><i></i></span> Re-mapping with the new source…</div>`:'')});
   h+=gapsPanel();
   if(gapCount()===0 && RPT.validated){
@@ -2971,11 +4237,18 @@ function gapsPanel(){
     return `<div class="gaps-card resolved"><div class="gaps-h">${OB_ICONS.check}<span>No open gaps — every master field is mapped to a source.</span></div>${RPT.validated?'':`<div class="agentc-cta"><button class="btn primary" onclick="rptValidate()">${OB_ICONS.shield}Validate the values for me</button><span class="agent-status">The Operator cross-checks the mapped values before the next stage.</span></div>`}</div>`;
   }
   const rows=gaps.map(f=>{
-    if(f.status==='collecting') return `<div class="gap-row"><div class="gap-ic collecting"><span class="dots"><i></i><i></i><i></i></span></div><div class="gap-main"><div class="gap-h">${f.name}</div><div class="gap-m">Collection agent assigned to ${f.owner} — collecting…</div></div></div>`;
+    if(f.status==='collecting'){
+      const hasPacket=!!PROVIDER_TASKS[f.id];
+      const packetBtn=hasPacket?`<button class="chipbtn" onclick="rptOpenPacket('${f.id}')">${OB_ICONS.eye}Open data packet</button>`:'';
+      return `<div class="gap-row"><div class="gap-ic collecting"><span class="dots"><i></i><i></i><i></i></span></div><div class="gap-main"><div class="gap-h">${f.name}</div><div class="gap-m">Chase task opened · ${f.owner} — awaiting the data packet</div></div><div class="gap-actions">${packetBtn}</div></div>`;
+    }
+    const collectBtn=PROVIDER_TASKS[f.id]
+      ? `<button class="chipbtn" onclick="rptAssignCollector('${f.id}')">${OB_ICONS.people}Chase the owner</button>`
+      : `<button class="chipbtn" onclick="rptAssignCollector('${f.id}')">${OB_ICONS.people}Assign collector</button>`;
     return `<div class="gap-row"><div class="gap-ic">${OB_ICONS.info}</div><div class="gap-main"><div class="gap-h">${f.name}</div><div class="gap-m">${f.master} · no source mapped</div></div>
-      <div class="gap-actions"><button class="chipbtn" onclick="rptAddSource('${f.id}')">${OB_ICONS.upload}Add source</button><button class="chipbtn" onclick="rptAskAgent('${f.id}')">${IC.op}Ask agent</button><button class="chipbtn" onclick="rptAssignCollector('${f.id}')">${OB_ICONS.people}Assign collector</button></div></div>`;
+      <div class="gap-actions"><button class="chipbtn" onclick="rptAddSource('${f.id}')">${OB_ICONS.upload}Add source</button><button class="chipbtn" onclick="rptAskAgent('${f.id}')">${IC.op}Ask agent</button>${collectBtn}</div></div>`;
   }).join('');
-  return `<div class="gaps-card"><div class="gaps-h">${OB_ICONS.info}<span><strong>${gaps.length} data ${gaps.length===1?'gap':'gaps'}</strong> — resolve each by adding a source, asking an agent to find it, or assigning a collection agent. Any new source re-runs the mapping.</span></div><div class="gap-list">${rows}</div></div>`;
+  return `<div class="gaps-card"><div class="gaps-h">${OB_ICONS.info}<span><strong>${gaps.length} data ${gaps.length===1?'gap':'gaps'}</strong> — resolve each by adding a source, asking an agent to find it, or chasing the owner with a data packet. Any new source re-runs the mapping.</span></div><div class="gap-list">${rows}</div></div>`;
 }
 function rptMapRun(){ if(RPT.mapping) return; RPT.mapping=true; initSteps('map'); renderReport(); scheduleSteps(AGENT_RUN_MS); rptLog('agent','Mapping Agent started','Aligning sources to master fields'); setTimeout(()=>{ RPT.mapping=false; RPT.mapRun=true; rptLog('agent','Mapping Agent finished',`${RPT.fields.filter(f=>f.status==='mapped').length} mapped · ${gapCount()} gaps`); showToast('Mapping complete — '+gapCount()+' gaps'); renderReport(); }, AGENT_RUN_MS); }
 function rptRemapResolve(fid, from, src, conf, logT, logM, toast){
@@ -2985,7 +4258,21 @@ function rptRemapResolve(fid, from, src, conf, logT, logM, toast){
 }
 function rptAddSource(fid){ const f=RPT.fields.find(x=>x.id===fid); if(!f) return; rptLog('human','You added a data source','For '+f.name); const from=fid==='f7'?'Brazil IC subledger':'Uploaded statement'; const src=fid==='f7'?'NetSuite · BR':'Nordic_FY2025.pdf'; rptRemapResolve(fid,from,src,'high','Re-mapping finished',f.name+' mapped — gap closed','Re-mapped — gap closed'); }
 function rptAskAgent(fid){ const f=RPT.fields.find(x=>x.id===fid); if(!f) return; rptLog('human','You asked an agent to find '+f.name,'Search agent dispatched'); rptRemapResolve(fid,'Agent-sourced','Found in workspace','medium','Search agent finished',f.name+' located & mapped','Agent found the data'); }
-function rptAssignCollector(fid){ const f=RPT.fields.find(x=>x.id===fid); if(!f) return; f.status='collecting'; f.owner=fid==='f7'?'Tom Reyes · Brazil Finance':'Nordic controller'; rptLog('human','You assigned a collection agent',f.name+' → '+f.owner); renderReport(); setTimeout(()=>{ f.status='resolved'; f.from='Collected reply'; f.src=f.owner; f.conf='high'; rptLog('agent','Collection agent finished',f.name+' received & mapped'); showToast('Collected — '+f.name); renderReport(); }, Math.round(AGENT_RUN_MS*1.6)); }
+function rptAssignCollector(fid){
+  const f=RPT.fields.find(x=>x.id===fid); if(!f) return;
+  const t=PROVIDER_TASKS[fid];
+  if(t){
+    /* Open a real chase task and drop the operator into the provider's data
+       packet ("view as provider") — resolving it there closes the gap. */
+    f.status='collecting'; f.owner=t.provider+' · '+t.providerRole;
+    RPT.provTasks[fid]={status:'open'};
+    rptLog('human','You opened a chase task',f.name+' → '+f.owner);
+    showToast('Chase task opened — '+t.provider);
+    renderReport();
+    rptOpenPacket(fid);
+    return;
+  }
+  f.status='collecting'; f.owner=fid==='f7'?'Tom Reyes · Brazil Finance':'Nordic controller'; rptLog('human','You assigned a collection agent',f.name+' → '+f.owner); renderReport(); setTimeout(()=>{ f.status='resolved'; f.from='Collected reply'; f.src=f.owner; f.conf='high'; rptLog('agent','Collection agent finished',f.name+' received & mapped'); showToast('Collected — '+f.name); renderReport(); }, Math.round(AGENT_RUN_MS*1.6)); }
 function rptValidate(){ RPT.validated=true; RPT.mapDone=true; rptLog('commit','You validated the mapped values','0 blocking issues · values cross-checked'); showToast('Validation passed'); renderReport(); }
 
 /* ================= VALIDATE · REVIEW · FILE ================= */
@@ -3072,7 +4359,8 @@ function reviewTab(){
     h+=`<div class="rv-claim">${OB_ICONS.info}<span><strong>${notFiling.length} not filing</strong> — ${notFiling.map(e=>e.name).join(', ')} file a Claim for Not Filing rather than a BE-11 form.</span></div>`;
   }
   if(allDone){
-    h+=`<div class="confirm-bar"><div class="cb-ic">${OB_ICONS.arrow}</div><div class="cb-txt"><div class="cb-h">All forms reviewed — file the package next</div><div class="cb-m">Sign off and submit the ${total}-form ${OB_TYPES[RPT.type].code} package to the BEA.</div></div><button class="btn primary" onclick="rptToFile()">Continue to File</button></div>`;
+    /* All forms read like a BEA reviewer would — now sign on the judgment ledger. */
+    h+=reviewFinalPanel();
   }
   return h;
 }
@@ -3098,12 +4386,176 @@ function reviewFormView(name){
 }
 function scrollToSec(key){ requestAnimationFrame(()=>{ const s=document.getElementById('sec-'+key); if(s) s.scrollIntoView({block:'start'}); }); }
 function openRptForm(name){ RPT.formOpen=name; rptLog('human','You opened '+name,'Reviewing '+(curFormByName(name)||'the form')); renderReport(); scrollToSec('review'); }
+/* Open a filing form straight from the Project Overview — as its own standalone
+   form page (Overview + Form tabs), NOT inside the Review & approve stage. The
+   form is assembled from accepted, sourced facts and is viewable at any point. */
+function openProjectForm(name){
+  const e=RPT.entities.find(x=>x.name===name); if(!e) return;
+  if(!isFiling(curForm(e))){ showToast(e.name+' files a Claim for Not Filing — no BE-11 form'); return; }
+  const x=reviewForms().find(y=>y.e.name===name); if(!x){ showToast('Form not available'); return; }
+  const f={...x.f, status:(RPT.reviewed[name]?'done':'run'), agent:'Filing Preparation', conf:x.f.conf||'high'};
+  // Synthetic session for the shared overview cards (people/dates), matched to
+  // the equivalent live session when one exists.
+  const linked=sessions.find(z=>z.code===OB_TYPES[RPT.type].code && z.status!=='done')||sessions.find(z=>z.code===OB_TYPES[RPT.type].code);
+  const s=linked||{title:rptName(),sub:OB_TYPES[RPT.type].sub,people:['dr','sc']};
+  currentFormReportId=null; currentFormId=null; currentFormTab='overview';
+  currentFormCtx={
+    f, s, reportName:rptName(), deepLink:false,
+    crumbHtml:`<span style="cursor:pointer;color:var(--text-3)" onclick="backToProject()">${rptName()}</span> <span style="color:var(--text-3)">›</span> ${f.code} · ${f.entity}`,
+    back:backToProject,
+    operator:null,
+  };
+  go('form');
+  renderFormPage();
+}
+/* Return from a standalone project form to the interactive report Overview. */
+function backToProject(){ if(!RPT) return go('filings'); go('report'); RPT.tab='overview'; renderReport(); scrollToSec('overview'); }
 function curFormByName(name){ const e=RPT.entities.find(x=>x.name===name); return e?curForm(e):null; }
-function closeRptForm(){ RPT.formOpen=null; renderReport(); scrollToSec('review'); }
+function closeRptForm(){ RPT.formOpen=null; if(!RPT.unlocked.review){ RPT.tab='overview'; } renderReport(); scrollToSec(RPT.tab); }
 function rptMarkReviewed(name){ RPT.reviewed[name]=true; RPT.formOpen=null; rptLog('commit','You reviewed '+name,'Form approved for filing'); showToast('Marked reviewed'); renderReport(); scrollToSec('review'); }
 
+/* =============================================================
+   FINAL APPROVAL — JUDGMENT LEDGER (ported from the Agent-First CRR flow)
+   You sign on a complete ledger, not a stack of forms: every value traces to a
+   source, every warning + resolution + override is recorded, and an independent
+   verification pass backs your signature. Approving over an open blocker is
+   possible — but only as an explicit, recorded override. Never silent.
+============================================================= */
+/* Value → source lines that back the signature. */
+const REVIEW_LEDGER=[
+  {label:'Every reported value traces to a source', detail:'Each figure links to the ledger column, provider packet, or document it came from — nothing is invented.', ruleId:'PROV', src:'Data collection · source data'},
+  {label:'Ownership reconciles to the consolidation', detail:'Direct voting % and equity match the cap table and consolidation for every affiliate.', ruleId:'VAL-03', src:'Consolidation · cap table'},
+  {label:'Size tests drive each form’s schedule', detail:'BE-11B/C at $60M and the short BE-11D at $25M–$60M select the right schedule per entity.', ruleId:'VAL-04', src:'BEA size tests'},
+  {label:'Currency translation applied consistently', detail:'Non-USD affiliates translated at the period-close rate from the treasury feed.', ruleId:'VAL-02', src:'Treasury · FY25 close rates'},
+  {label:'Prior-year variance reviewed', detail:'Germany sales +5.5% within tolerance; R&D +69% flagged to the data owner in triage.', ruleId:'VAL-06', src:'Prior filing · FY24'},
+];
+/* BEA edit-check gates (VAL-01 – VAL-09), shown as the evidence behind sign-off. */
+const REVIEW_VAL_GATES=[
+  {id:'VAL-01', label:'Balance sheet cross-foots on every form', s:'ok'},
+  {id:'VAL-02', label:'Currency translation at period-close rates', s:'ok'},
+  {id:'VAL-03', label:'Ownership reconciles to consolidation & cap table', s:'ok'},
+  {id:'VAL-04', label:'Size test selects the correct schedule', s:'ok'},
+  {id:'VAL-05', label:'Identification fields complete on all forms', s:'ok'},
+  {id:'VAL-06', label:'Prior-year variance within tolerance', s:'adv'},
+  {id:'VAL-07', label:'Intercompany balances eliminate to zero', s:'ok'},
+  {id:'VAL-08', label:'Net income ties to the P&L close', s:'ok'},
+  {id:'VAL-09', label:'No duplicate or missing affiliate forms', s:'ok'},
+];
+/* An independent second pass — deliberately re-derived, not the same run. */
+const REVIEW_FINAL_VERIFY=[
+  {id:'FV-1', label:'Independent re-pull of each filing figure matches the assembled form', s:'ok'},
+  {id:'FV-2', label:'Every value resolves to a source link', s:'ok'},
+  {id:'FV-3', label:'All triage exceptions resolved or recorded as overrides', s:'dyn'},
+  {id:'FV-4', label:'Package structure valid for BEA e-file submission', s:'ok'},
+];
+const REVIEW_FX={provider:'Treasury FX feed', method:'FY2025 period-close spot rates'};
+const DC_TRI_RES_LABEL={confirmed:'confirmed as expected',accepted:'accepted with a note',asked:'routed to the data owner',chased:'routed to the owner (chase task)',applied:'applied the scope change',kept:'kept the current scope'};
+const DC_TRI_OVERRIDE={accepted:true, kept:true};
+/* Aggregate the whole filing's collection state + triage outcomes into the
+   numbers the ledger is signed against. */
+function reviewLedgerStats(){
+  let total=0, sourced=0, manual=0, unmapped=0;
+  dcFilingEntities().forEach(e=>{ dcResolvedRows(e).forEach(r=>{ total++; if(r.coll==='source') sourced++; else if(r.coll==='manual') manual++; else if(r.coll==='unmapped') unmapped++; }); });
+  const resolvedIds=Object.keys(RPT.dcTriage||{});
+  const openItems=dcTriageItems();
+  const blocking=openItems.filter(i=>i.blocking).length;
+  let overrides=resolvedIds.filter(id=>DC_TRI_OVERRIDE[RPT.dcTriage[id]]).length;
+  if(RPT.finalOverride) overrides++;
+  return {total, sourced, manual, unmapped, warningsResolved:resolvedIds.length, blocking, overrides, resolvedIds, openItems};
+}
+function reviewGateList(gates, blocking){
+  const rows=gates.map((c,i)=>{
+    let s=c.s;
+    if(s==='dyn') s = blocking>0 ? 'adv' : 'ok';
+    const tag = s==='ok'?'Pass':(blocking>0&&c.s==='dyn'?`${blocking} open`:'Advisory');
+    return `<div class="vchk ${s} reveal" style="animation-delay:${i*.03}s"><div class="vchk-ic">${s==='ok'?OB_ICONS.check:OB_ICONS.info}</div><div class="vchk-main"><div class="vchk-t"><span class="jl-gid">${c.id}</span> ${c.label}</div></div><span class="vchk-tag">${tag}</span></div>`;
+  }).join('');
+  return `<div class="vchk-list">${rows}</div>`;
+}
+function reviewLedgerCard(st){
+  const provRows=REVIEW_LEDGER.map(r=>`<li class="jl-row"><span class="jl-tick">${OB_ICONS.check}</span><div class="jl-main"><div class="jl-label">${r.label}</div><div class="jl-detail">${r.detail}</div><div class="jl-src">${OB_ICONS.src}<span>${r.src}</span><span class="jl-rule">${r.ruleId}</span></div></div></li>`).join('');
+  // Every warning + resolution + override, from Data collection triage.
+  let warnRows;
+  if(!st.resolvedIds.length){
+    warnRows=`<div class="jl-empty">No exceptions surfaced — or none resolved yet. Items resolved in Data collection triage log here.</div>`;
+  } else {
+    warnRows=`<ul class="jl-warns">`+st.resolvedIds.map(id=>{
+      const res=RPT.dcTriage[id]; const ov=DC_TRI_OVERRIDE[res];
+      const label=DC_TRI_RES_LABEL[res]||res;
+      const title=(REVIEW_TRI_TITLE[id]||id);
+      return `<li class="jl-warn"><span class="jl-warn-t">${title}</span><span class="jl-warn-dash">—</span><span class="jl-warn-r">${label}</span><span class="pill ${ov?'amber':'green'}">${ov?'override':'resolved'}</span></li>`;
+    }).join('')+`</ul>`;
+  }
+  return `<div class="jl-card"><div class="jl-h">Judgment ledger</div><ul class="jl-list">${provRows}<li class="jl-row"><span class="jl-tick">${OB_ICONS.check}</span><div class="jl-main"><div class="jl-label">Every warning, resolution &amp; override</div>${warnRows}</div></li></ul></div>`;
+}
+/* Human-readable titles for triage ids surfaced in the ledger. */
+const REVIEW_TRI_TITLE={'recon-ic':'Brazil intercompany reconciliation break','recon-nordic':'Nordic opening-balance break','scope-br':'Brazil scope change','var-de-rnd':'Germany R&D +69% variance','final-de-eq':'Germany owners’ equity restated'};
+function reviewStatsStrip(st){
+  const cell=(v,lab,tone)=>`<div class="jl-stat"><div class="jl-stat-v ${tone}">${v}</div><div class="jl-stat-k">${lab}</div></div>`;
+  return `<div class="jl-stats">${cell(st.blocking,'blocking',st.blocking>0?'bad':'good')}${cell(st.warningsResolved,'warnings resolved','')}${cell(st.overrides, st.overrides===1?'override recorded':'overrides recorded', st.overrides>0?'warn':'')}</div>`;
+}
+function reviewReviewerLine(){
+  const pg=planGlobal(); const approver=pg.approve.people[0]; const two=RPT.approval===2;
+  const revChips=two?pg.review.people.map(p=>`<span class="jl-rev-chip">${av(p.c)}${p.n}</span>`).join(''):'';
+  return `<div class="jl-reviewer"><div class="jl-rev-main"><span class="jl-rev-k">Filing approver</span><span class="jl-rev-who">${av(approver.c)}<strong>${approver.n}</strong> · ${pg.approve.name}</span></div>${two?`<div class="jl-rev-chain"><span class="jl-rev-k">Reviewed regionally by</span>${revChips}</div>`:''}</div>`;
+}
+function reviewFinalPanel(){
+  const st=reviewLedgerStats();
+  const blocking=st.blocking;
+  let action;
+  if(RPT.finalApproved){
+    const ov=RPT.finalOverride;
+    action=`<div class="jl-approved">${OB_ICONS.check}<div><div class="jl-approved-h">Package approved${ov?' with override':''} &amp; locked</div><div class="jl-approved-m">${ov?`Override recorded at ${ov.at}: “${ov.reason}”`:'Every value traces to a source and every decision is in the ledger.'}</div></div></div>
+      <div class="confirm-bar"><div class="cb-ic">${OB_ICONS.arrow}</div><div class="cb-txt"><div class="cb-h">Approved — file the package next</div><div class="cb-m">Authorize the sign-off and submit the ${reviewCounts().total}-form ${OB_TYPES[RPT.type].code} package to the BEA.</div></div><button class="btn primary" onclick="rptToFile()">Continue to File</button></div>`;
+  } else if(RPT.finalMode==='sendback'){
+    action=reviewReasonCapture('Why send it back? (recorded)','e.g. Attach the Germany intercompany email before final sign-off.','Record & send back','rptFinalSendBack()',false);
+  } else if(RPT.finalMode==='override'){
+    action=reviewReasonCapture('Approve over an open blocker — the reason is recorded to the ledger','e.g. Brazil scope confirmed verbally by the controller; documentation to follow.','Record override & approve','rptFinalApprove(true)',true);
+  } else {
+    const warn=blocking>0?`<div class="jl-blockwarn">${OB_ICONS.info}<span><strong>${blocking} blocking finding still open.</strong> You can approve, but it becomes an <strong>explicit, recorded override</strong> — never silent.</span></div>`:'';
+    const primary=blocking>0
+      ? `<button class="btn primary danger" onclick="rptSetFinalMode('override')">${OB_ICONS.shield} Approve with override…</button>`
+      : `<button class="btn primary" onclick="rptFinalApprove(false)">${OB_ICONS.check} Approve final package</button>`;
+    action=`${warn}${RPT.finalSentBack?`<div class="jl-sentback">${OB_ICONS.info}<span>Sent back at ${RPT.finalSentBack.at}: “${RPT.finalSentBack.reason}”</span></div>`:''}<div class="jl-actions">${primary}<button class="btn sec" onclick="rptSetFinalMode('sendback')">Send back</button></div>`;
+  }
+  const body=`${reviewLedgerCard(st)}${reviewStatsStrip(st)}
+    <div class="jl-sub"><div class="jl-sub-h">${OB_ICONS.shield}Validation gates · VAL-01 – VAL-09</div>${reviewGateList(REVIEW_VAL_GATES,blocking)}<div class="jl-fx">${OB_ICONS.info} VAL-02 currency translation uses <strong>${REVIEW_FX.provider}</strong> — ${REVIEW_FX.method}.</div></div>
+    <div class="jl-sub"><div class="jl-sub-h">${OB_ICONS.scan}Independent final verification pass</div>${reviewGateList(REVIEW_FINAL_VERIFY,blocking)}</div>
+    <div class="jl-sub">${reviewReviewerLine()}</div>
+    <div class="jl-actionwrap">${action}</div>`;
+  return agentCard({icon:OB_ICONS.sign,name:'Final approval · judgment ledger',tag:'Review & approve',role:'Sign on a complete ledger, not a stack of forms. Every value traces to a source, every warning and override is recorded, and an independent verification pass backs your signature.',body});
+}
+function reviewReasonCapture(label,placeholder,confirmLabel,onConfirm,danger){
+  return `<div class="jl-reason ${danger?'danger':''}"><div class="jl-reason-lab">${label}</div><textarea id="finalReason" class="jl-reason-in" rows="3" placeholder="${escAttr(placeholder)}"></textarea><div class="jl-reason-acts"><button class="btn sec" onclick="rptSetFinalMode('idle')">Cancel</button><button class="btn primary ${danger?'danger':''}" onclick="${onConfirm}">${confirmLabel}</button></div></div>`;
+}
+function rptSetFinalMode(m){ if(!RPT) return; RPT.finalMode=m; renderReport(); scrollToSec('review'); requestAnimationFrame(()=>document.getElementById('finalReason')?.focus()); }
+function rptFinalApprove(override){
+  if(!RPT) return;
+  if(override){
+    const reason=(document.getElementById('finalReason')?.value||'').trim();
+    if(!reason){ showToast('Add a reason to record the override'); return; }
+    RPT.finalOverride={reason, at:obNow()};
+    rptLog('commit','You approved with a recorded override', reason);
+  } else {
+    RPT.finalOverride=null;
+    rptLog('commit','You approved the final package','Signed on the judgment ledger · 0 blocking');
+  }
+  RPT.finalApproved=true; RPT.finalMode='idle'; RPT.finalSentBack=null;
+  showToast(override?'Approved with override':'Final package approved');
+  renderReport(); scrollToSec('review');
+}
+function rptFinalSendBack(){
+  if(!RPT) return;
+  const reason=(document.getElementById('finalReason')?.value||'').trim();
+  if(!reason){ showToast('Add a reason before sending back'); return; }
+  RPT.finalSentBack={reason, at:obNow()}; RPT.finalApproved=false; RPT.finalMode='idle';
+  rptLog('human','You sent the package back', reason);
+  showToast('Sent back for changes');
+  renderReport(); scrollToSec('review');
+}
+
 /* ---------- File ---------- */
-function rptToFile(){ const {total,done}=reviewCounts(); if(total===0||done<total) return; RPT.reviewDone=true; RPT.unlocked.file=true; rptLog('human','You moved to File','Filing package ready for sign-off'); rptGoto('file'); }
+function rptToFile(){ const {total,done}=reviewCounts(); if(total===0||done<total||!RPT.finalApproved) return; RPT.reviewDone=true; RPT.unlocked.file=true; rptLog('human','You moved to File','Filing package ready for sign-off'); rptGoto('file'); }
 function fileTab(){
   const {total}=reviewCounts(); const r=OB_TYPES[RPT.type]; const c=formCounts();
   if(RPT.filed){
@@ -3154,10 +4606,22 @@ function openFabFor(key){
     const code=OB_TYPES[RPT.type].code;
     fabMsg('op',`Happy to help with <strong>setup</strong>. For a ${code} you'll want your current-year <strong>trial balance(s) with per-entity detail</strong> and last year's <strong>filed report</strong>. If exporting is a hassle, I can pull the trial balance straight from your ERP by query.${fabAction("closeFab();rptConnect()",OB_ICONS.src,'Connect a data source for me')}`);
   } else {
-    fabMsg('op',`Happy to help with <strong>${lab}</strong>. Ask me anything about it, or pick a suggestion below — I'll show the evidence behind every answer.`);
+    const intro=fabHelpIntro(key);
+    fabMsg('op', intro || `Happy to help with <strong>${lab}</strong>. Ask me anything about it, or pick a suggestion below — I'll show the evidence behind every answer.`);
   }
   renderFabSuggests(); updateFabCtx();
   setTimeout(()=>document.getElementById('fabInput')?.focus(),120);
+}
+/* A stage-tailored opening line for the "Help with …" button, grounded in the
+   report's live numbers so the FAB starts with something concrete to react to. */
+function fabHelpIntro(key){
+  if(!RPT) return null;
+  const r=OB_TYPES[RPT.type]; const agency=r.agency.split('·')[0].trim();
+  if(key==='scoping') return `Happy to help with <strong>planning</strong>. I've assigned each of your ${RPT.entities.length} entities a BEA form from the size-test rules — ${scopeSummary()}. Ask why any entity got its form, or how approvals and groups work.`;
+  if(key==='mapping'){ const g=gapCount(); return `Happy to help with <strong>data collection</strong>. I map every source column to the master field model; there ${g===1?'is':'are'} currently <strong>${g} open gap${g===1?'':'s'}</strong>. Ask how to close a gap or what a master field is.`; }
+  if(key==='review'){ const c=reviewCounts(); return `Happy to help with <strong>review &amp; approve</strong>. Open each assembled form and confirm its values — <strong>${c.done} of ${c.total}</strong> reviewed so far. Every figure is sourced, never invented. Ask where a value comes from.`; }
+  if(key==='file'){ const c=formCounts(); return `Happy to help with <strong>filing</strong>. The package has <strong>${c.filing} filing forms</strong> plus ${c.notfiling} claims for not filing. Provide the authorized sign-off and I submit to ${agency}. Ask what's in the package or what happens after you file.`; }
+  return null;
 }
 function openFabSeeded(){
   fabSeeded=false;
@@ -3167,8 +4631,15 @@ function openFabSeeded(){
   updateFabCtx();
 }
 function inReport(){ return document.querySelector('.view.active')?.id==='view-report' && RPT; }
+/* True while the user is anywhere in the report flow — the full-screen setup
+   wizard or the tabbed project page. */
+function inReportFlow(){ const v=document.querySelector('.view.active')?.id; return (v==='view-report'||v==='view-setup') && !!RPT; }
+/* Which lifecycle step the FAB should talk about — 'setup' while the full-screen
+   wizard is open, otherwise the active project-page tab. */
+function fabStageKey(){ if(document.querySelector('.view.active')?.id==='view-setup') return 'setup'; return RPT?RPT.tab:null; }
+function fabStageLabel(){ const k=fabStageKey(); if(k==='setup') return 'Setup'; const t=RP_TABBAR.find(x=>x.key===k); return t?t.label:'Overview'; }
 function fabCtxText(){
-  if(inReport()){ return `${OB_TYPES[RPT.type].code} · ${rptTabLabel()}`; }
+  if(inReportFlow()){ return `${OB_TYPES[RPT.type].code} · ${fabStageLabel()}`; }
   return 'Operator workspace';
 }
 function updateFabCtx(){
@@ -3181,7 +4652,8 @@ function seedFab(){
     RPT.conv.forEach(m=>fabMsg(m.who==='user'?'user':'op', m.text, m.ev));
     return;
   }
-  fabMsg('op', `Hi Julie — I'm the Operator. Ask me anything about ${inReport()?OB_TYPES[RPT.type].code+' — '+rptTabLabel():'your workspace'}. I'll show the evidence behind every answer.`);
+  const where=inReportFlow()?`${OB_TYPES[RPT.type].code} — ${fabStageLabel()}`:'your workspace';
+  fabMsg('op', `Hi Julie — I'm the Operator. Ask me anything about ${where}. I'll show the evidence behind every answer.`);
 }
 function fabAction(fn,icon,label){ return `<div class="fab-acts"><button class="fab-act" onclick="${fn.replace(/"/g,'&quot;')}">${icon||''}${label}</button></div>`; }
 function fabMsg(who,text,ev){
@@ -3193,23 +4665,112 @@ function fabMsg(who,text,ev){
 }
 function renderFabSuggests(){
   const el=document.getElementById('fabSuggests'); if(!el) return;
-  const map={setup:['What source data do I need?','Why this due date?','What is a readiness target?'],scoping:['Why BE-11B vs BE-11D?','Explain the $60M test','Which entities file?'],mapping:['What are the open gaps?','What is a master field?','How do I close a gap?']};
-  const chips = inReport() ? (map[RPT.tab]||['What happens next?','Explain this stage']) : ['What can I file right now?','How does the Operator work?','What are agents?'];
+  const map={
+    setup:['What source data do I need?','Why this due date?','What is a readiness target?','How does the entity scan work?'],
+    scoping:['Why BE-11B vs BE-11D?','Explain the $60M test','Which entities file?','Who approves this filing?'],
+    mapping:['What are the open gaps?','What is a master field?','How do I close a gap?','How is my data validated?'],
+    review:['What am I reviewing?','Where do these values come from?','How many forms are left?','Who files a Claim for Not Filing?'],
+    file:["What's in the filing package?",'Who signs off?','What happens after I file?','When is this due?'],
+    overview:['What needs my attention?','How ready is this filing?','Which forms are in scope?',"What's the due date?"],
+    activity:["What's happened so far?",'Who has made changes?','Show the latest agent runs'],
+  };
+  const general=['What needs me this week?','What can I file right now?','What deadlines are coming up?','How does the Operator work?','What are agents?'];
+  const chips = inReportFlow() ? (map[fabStageKey()]||['What happens next?','Explain this stage']) : general;
   el.innerHTML=chips.map(c=>`<button class="fab-chip" onclick="fabSend('${c.replace(/'/g,"\\'")}')">${c}</button>`).join('');
 }
+/* Context-aware answer engine. Replies are grounded in the live report / portfolio
+   state (entities, gaps, forms, deadlines) so every stage — and the general
+   workspace when no report is open — gets a meaningful, evidence-backed answer. */
 function fabReplyFor(q){
-  const r = inReport() ? OB_TYPES[RPT.type] : null;
-  const s=q.toLowerCase();
-  if(r && (s.includes('source')||s.includes('upload')||s.includes('data'))) return {t:`For ${r.code} Setup you provide two things: the current-year <strong>trial balance</strong> (with per-entity detail) and last year's <strong>filed report</strong>. The scan agent reads both to build your entity list. I can also pull the trial balance straight from your ERP by query — no export needed.${fabAction("closeFab();rptConnect()",OB_ICONS.src,'Connect a data source for me')}`, ev:'BEA '+r.code+' setup inputs'};
-  if(s.includes('due')&&r) return {t:`The statutory due date is <strong>${r.due}</strong> — ${r.dueReason}. Your <strong>readiness target</strong> is an internal date you set so the team finishes ahead of the deadline.`, ev:'BEA filing calendar'};
-  if(s.includes('readiness')) return {t:`The <strong>readiness target</strong> is your internal deadline — defaulted about two weeks before the statutory due date to leave buffer for review and sign-off. It's never filed to BEA.`, ev:'Internal target'};
-  if(s.includes('60')||s.includes('size test')||s.includes('threshold')) return {t:`BEA applies a <strong>$60M size test</strong> on the largest of total assets, sales, or absolute net income. Above it, majority-owned affiliates file a full <strong>BE-11B</strong>; newly acquired affiliates between <strong>$25M–$60M</strong> file the short <strong>BE-11D</strong>; minority affiliates file a <strong>Claim for Not Filing</strong>.`, ev:'BEA BE-11 filing rules'};
-  if(s.includes('11d')||s.includes('11b')||s.includes(' vs ')) return {t:`<strong>BE-11B</strong> is the full form for majority-owned affiliates above $60M. <strong>BE-11D</strong> is a short form for <em>newly acquired</em> majority-owned affiliates whose largest figure lands between $25M and $60M — like Nordic Ventures AB this year.`, ev:'Per-entity reasoning shown in Planning'};
-  if(s.includes('master field')) return {t:`A <strong>master field</strong> is one canonical concept (e.g. “Net income”) that many source columns map to. Map once to the master model and every BEA form that needs that value is filled consistently.`, ev:'Master field model'};
-  if(s.includes('gap')) return {t:`A gap is a master field with no mapped source. Resolve it by <strong>adding a data source</strong>, <strong>asking an agent to find it</strong>, or <strong>assigning a collection agent</strong> to the owner. Any new source re-runs the mapping automatically.`, ev:'Data collection loop'};
-  if(s.includes('entit')||s.includes('scope')||s.includes('which')) return {t:`Planning assigns each entity its BEA form from the rules, showing the figure that triggered the call. You can override any row — the minority affiliate Dutch Peak is flagged for your decision.`, ev:'Scope & Forms output'};
-  if(s.includes('file right now')||s.includes('what can i file')) return {t:`Start a <strong>BE-11</strong> or <strong>BE-577</strong> from the Operator or the sidebar and I'll walk you through Setup, Planning and Data collection.`, ev:'Based on your workspace'};
-  return {t:`In this ${r?r.code+' ':''}context I'd pull the relevant source data and BEA guidance, show the evidence, and wait for your approval before applying anything.`, ev:'Every answer is evidence-backed'};
+  const flow = inReportFlow();
+  const r = flow ? OB_TYPES[RPT.type] : null;
+  const stage = flow ? fabStageKey() : null;
+  const agency = r ? r.agency.split('·')[0].trim() : 'the agency';
+  const s = q.toLowerCase();
+  const has = (...ks)=>ks.some(k=>s.includes(k));
+
+  /* ---- Universal: how the Operator & its agents work (any context) ---- */
+  if(has('how do you work','how does the operator','how does this work','what is the operator','what can you do'))
+    return {t:`I run each regulatory filing end-to-end through five stages — <strong>Setup → Planning → Data collection → Review &amp; approve → File</strong>. Specialist agents do the heavy lifting at every step — finding data, assigning forms, chasing owners, running the edit checks — and I show you the evidence behind each result. Nothing is committed or filed until you approve it.`, ev:'How the Operator works'};
+  if(has('what are agents','what is an agent','the agents','agent do','agents do'))
+    return {t:`Agents are the specialists I dispatch behind the scenes. You'll see <strong>Scope &amp; Entity</strong> assign each entity its form, <strong>Mapping &amp; Resolve</strong> match your data to the master fields, <strong>Collection &amp; Chase</strong> request missing figures from their owners, and <strong>Validation &amp; Readiness</strong> run the BEA edit checks. Each shows its work and waits for your go-ahead on anything that matters.`, ev:'Operator agent roster'};
+
+  /* ================= GENERAL WORKSPACE (no report open) ================= */
+  if(!flow){
+    const needs=sessions.filter(x=>x.status==='needs_you');
+    const waiting=sessions.filter(x=>x.status==='waiting');
+    const active=sessions.filter(x=>x.status!=='done');
+    const up=UPCOMING.map(u=>({...u,left:daysLeftOf(u.date)})).sort((a,b)=>a.left-b.left);
+    const dl=d=>d<0?`${-d}d overdue`:(d===0?'due today':`${d}d left`);
+    if(has('need','attention','this week','my review','waiting on me','to do','what do i'))
+      return {t:`<strong>${needs.length||'No'} filing${needs.length===1?'':'s'} need${needs.length===1?'s':''} you</strong> right now${needs.length?`: ${needs.map(x=>x.title).join(', ')}`:''}. Another ${waiting.length} ${waiting.length===1?'is':'are'} waiting on other people${waiting.length?` (${waiting.map(x=>x.title).join(', ')})`:''}. Open the Projects page and I'll take you straight to whichever you pick.`, ev:'Live from your work queue'};
+    if(has('file right now','what can i file','ready to file','what is ready','whats ready'))
+      return {t:`<strong>BE-11 · FY25</strong> is closest — 92% ready, it just needs Sarah Chen's sign-off before it can go to the BEA. Nothing else is ready yet: BE-577 Q2 is 64% (waiting on a Brazil intercompany balance) and CbCR is 38% (waiting on scope sign-off). You can also start a brand-new filing from the sidebar and I'll walk you through it.`, ev:'Based on your live portfolio'};
+    if(has('deadline','due','overdue','coming up','calendar','when'))
+      return {t:`Your next deadline is <strong>${up[0].label}</strong> on ${up[0].dateLabel} — ${dl(up[0].left)} (${up[0].note}). After that: ${up.slice(1,3).map(u=>`${u.label} on ${u.dateLabel}`).join(', ')}.`, ev:'BEA / IRS filing calendar'};
+    if(has('portfolio','overview','how many','status','everything'))
+      return {t:`You have <strong>${active.length} active filings</strong> across the BEA, IRS and GSA. ${needs.length} need${needs.length===1?'s':''} you, ${waiting.length} ${waiting.length===1?'is':'are'} waiting on others, and the rest are progressing. The most pressing is <strong>${up[0].label}</strong> (${dl(up[0].left)}).`, ev:'Portfolio snapshot'};
+    return {t:`I can help across your whole portfolio — ask what needs you this week, what's ready to file, or which deadlines are coming up. Open any filing and I'll get into the detail. I always show the evidence behind every answer.`, ev:'Operator workspace'};
+  }
+
+  /* ================= INSIDE A REPORT ================= */
+  if(has('source','upload','data i need','what data','ingest'))
+    return {t:`For ${r.code} Setup you provide two things: the current-year <strong>trial balance</strong> (with per-entity detail) and last year's <strong>filed report</strong>. The scan agent reads both to build your entity list. I can also pull the trial balance straight from your ERP by query — no export needed.${fabAction("closeFab();rptConnect()",OB_ICONS.src,'Connect a data source for me')}`, ev:'BEA '+r.code+' setup inputs'};
+  if(has('scan','entity list','build the entit','how the entit','ownership'))
+    return {t:`The scan agent reads your trial balance and prior filing to build the <strong>entity list</strong> — every foreign affiliate, its country, ownership %, and the figures that drive its BEA form. It found <strong>${RPT.entities.length} entities</strong> for ${r.code}; you review and approve them before Planning. Low-confidence rows — like new minority affiliates — are flagged for your decision.`, ev:'Entity & ownership scan'};
+  if(has('readiness'))
+    return {t:`The <strong>readiness target</strong> is your internal deadline — defaulted about two weeks before the statutory due date to leave buffer for review and sign-off. It's never filed to the BEA; it just lets me pace the chase reminders so you finish early.`, ev:'Internal target'};
+  if(has('due')&&!has('overdue'))
+    return {t:`The statutory due date is <strong>${r.due}</strong> — ${r.dueReason}. Your <strong>readiness target</strong> is an internal date you set so the team finishes ahead of the deadline.`, ev:'BEA filing calendar'};
+  if(has('60','size test','threshold','$25','25m'))
+    return {t:`BEA applies a <strong>$60M size test</strong> on the largest of total assets, sales, or absolute net income. Above it, majority-owned affiliates file a full <strong>BE-11B</strong>; newly acquired affiliates between <strong>$25M–$60M</strong> file the short <strong>BE-11D</strong>; below $25M they're exempt; minority affiliates file a <strong>Claim for Not Filing</strong>.`, ev:'BEA BE-11 filing rules'};
+  if(has('11d','11b',' vs ','11a'))
+    return {t:`<strong>BE-11A</strong> is the U.S. Reporter (consolidated parent) form. <strong>BE-11B</strong> is the full form for majority-owned affiliates above $60M. <strong>BE-11D</strong> is a short form for <em>newly acquired</em> majority-owned affiliates whose largest figure lands between $25M and $60M — like Nordic Ventures AB this year.`, ev:'Per-entity reasoning shown in Planning'};
+  if(has('approv','sign off','sign-off','signature','who signs'))
+    return {t:`Approvals run through the people groups you set in Planning: <strong>preparers</strong> assemble each form, an optional <strong>regional reviewer</strong> checks it, and <strong>Sarah Chen (Corporate Controllership)</strong> gives the final filing approval. You're on <strong>${RPT.approval===2?'two-level':'single-level'}</strong> approval with <strong>${RPT.reminders}</strong> chase reminders. Nothing files until the approver signs off.`, ev:'Planning · approvals & groups'};
+  if(has('reminder','chase','nudge','escalat','follow up','follow-up'))
+    return {t:`Chase reminders control how assertively I follow up on outstanding tasks before they hold up filing — <strong>Gentle</strong> (one nudge after due), <strong>Standard</strong> (daily from the due date), or <strong>Assertive</strong> (early heads-up, twice-daily, auto-escalation to the approver after 48h overdue). This report is set to <strong>${RPT.reminders}</strong>.`, ev:'Planning · reminder cadence'};
+  if(has('master field'))
+    return {t:`A <strong>master field</strong> is one canonical concept (e.g. “Net income”) that many source columns map to. Map once to the master model and every BEA form that needs that value is filled consistently — no re-keying per form.`, ev:'Master field model'};
+  if(has('validat','edit check','cross-foot','cross foot','tie out','variance'))
+    return {t:`Before review I run the <strong>BEA edit checks</strong> across every assembled form — balance-sheet cross-footing, net income tying to the P&amp;L close, ownership reconciling to consolidation, the size test picking the right schedule, identification fields, and prior-year variance. That's <strong>${valChecks().length} checks</strong>: 0 blocking issues and 1 advisory (Germany sales +5.5% vs FY2024, within tolerance).`, ev:'Validation Agent · BEA edit checks'};
+  if(has('gap')){
+    const g=gapCount();
+    return {t:`A gap is a master field with no mapped source — right now there ${g===1?'is':'are'} <strong>${g}</strong>. Resolve each by <strong>adding a data source</strong>, <strong>asking an agent to find it</strong>, or <strong>chasing the owner</strong> with a data packet. Any new source re-runs the mapping automatically.`, ev:'Data collection loop'};
+  }
+  if(has('after i file','what happens after','confirmation','acknowledg','once filed','next year'))
+    return {t:`After you submit, ${agency} returns a <strong>confirmation number</strong>, which I record to this report's activity along with an acknowledgement you can download. The report is then closed and its data is saved as <strong>next year's baseline</strong>, so the next cycle starts warm.`, ev:'Filing close & audit trail'};
+  if(has('package','submit','file the','whats in','what is in')){
+    const c=formCounts();
+    return {t:`The filing package bundles every assembled form for ${r.code} — <strong>${c.filing} filing forms</strong> plus ${c.notfiling} claims for not filing. Once you provide the authorized sign-off, I submit it to ${agency} and record the confirmation number to this report's activity.`, ev:'File · package summary'};
+  }
+  if(has('value','come from','where do','provenance','trace','evidence'))
+    return {t:`Every value on a form traces to a real source — the trial balance, GL close, consolidation, or a collected reply — with the citation and confidence shown on each one. Nothing is invented. That provenance is preserved in the audit trail, so the whole filing is defensible.`, ev:'Evidence & provenance'};
+  if(has('claim for not filing','not filing','minority'))
+    return {t:`Minority-owned affiliates don't file a full BE-11 form — they file a <strong>Claim for Not Filing</strong> instead. On this report that's the affiliates below majority ownership (like Dutch Peak and Avikro). The claim still travels in the package so the BEA sees the complete picture.`, ev:'BEA not-filing rules'};
+  if(has('review','how many forms','forms left','how many are left')){
+    const c=reviewCounts();
+    return {t:`Review &amp; approve is where you open each assembled ${r.code} form and confirm its populated values before anything files — every figure is sourced, never invented. You've reviewed <strong>${c.done} of ${c.total}</strong> forms so far. Mark each one reviewed to unlock filing.`, ev:'Review & approve'};
+  }
+  if(has('entit','scope','which'))
+    return {t:`Planning assigns each entity its BEA form from the rules, showing the figure that triggered the call — ${scopeSummary()}. You can override any row; the minority affiliate Dutch Peak is flagged for your decision.`, ev:'Scope & Forms output'};
+  if(has('next','what now','what happens next')){
+    const top=attnItems().find(x=>!x.done);
+    const g=gapCount();
+    return {t:`The next thing needing you is <strong>${top?top.t:'nothing right now'}</strong>. ${g>0?`There ${g===1?'is':'are'} still ${g} open data gap${g===1?'':'s'} to close.`:'All data gaps are closed.'} I'll show the evidence at each step before anything is committed.`, ev:'What needs you next'};
+  }
+
+  /* ---- Stage-tailored default, grounded in this report's live numbers ---- */
+  const stageDefault={
+    setup:{t:`In <strong>Setup</strong> I read your source data to build the entity list and stand the project up. Ask “what source data do I need?”, “why this due date?”, or “what is a readiness target?”`, ev:'Setup stage'},
+    scoping:{t:`In <strong>Planning</strong> I've assigned your ${RPT.entities.length} entities their BEA forms from the size-test rules — ${scopeSummary()}. Ask why any entity got its form, the $60M test, or how approvals work.`, ev:'Planning stage'},
+    mapping:{t:`In <strong>Data collection</strong> I map every source column to the master field model and flag any gaps. There ${gapCount()===1?'is':'are'} currently <strong>${gapCount()} open gap${gapCount()===1?'':'s'}</strong>. Ask what a master field is, how to close a gap, or how validation works.`, ev:'Data collection stage'},
+    review:{t:`In <strong>Review &amp; approve</strong> you confirm each assembled form's values — <strong>${reviewCounts().done} of ${reviewCounts().total}</strong> done. Ask where a value comes from or who files a Claim for Not Filing.`, ev:'Review & approve stage'},
+    file:{t:`In <strong>File</strong> you give the authorized sign-off and submit the ${formCounts().filing}-form package to ${agency}. Ask what's in the package or what happens after you file.`, ev:'File stage'},
+    overview:{t:`Here's the <strong>${r.code}</strong> overview — readiness, what needs you, the forms in scope, and where it sits in the lifecycle. Next up: <strong>${(attnItems().find(x=>!x.done)||{}).t||'nothing right now'}</strong>. Ask about any stage and I'll go deeper.`, ev:'Project overview'},
+    activity:{t:`<strong>Activity</strong> is the full record for ${r.code} — every agent run, commit, and human decision, newest first. Ask what's happened so far and I'll summarize the latest.`, ev:'Activity log'},
+  };
+  return stageDefault[stage] || {t:`In this ${r.code} context I'd pull the relevant source data and BEA guidance, show the evidence, and wait for your approval before applying anything.`, ev:'Every answer is evidence-backed'};
 }
 function fabSend(preset){
   const inp=document.getElementById('fabInput');
@@ -3232,7 +4793,12 @@ function fabSend(preset){
 Object.assign(window as any, { __OP_DATA: { REPORT_TYPES, OB_TYPES, get notifications(){ return notifications; }, get sessions(){ return sessions; } } });
 
 /* ---- expose handlers used by inline onclick attributes ---- */
-Object.assign(window as any, { actionsHTML, advance, agentCard, agentDispatchHtml, agentRowHtml, append, appendAgentDispatch, approveFromLedger, areaStats, attnItems, auditTrailBodyHtml, av, barClsForStatus, be11FormHtml, be577Stub, bindRptSpy, buildDocsTree, calShift, cbcrScopeTableHtml, chip, chooseAction, cite, cleanReply, clearSuggests, clearTyping, closeAllSessionMenus, closeDrawer, closeFab, closeModal, closeOpMore, closeRptForm, closeStartMenu, cmpReportsHtml, cmpYoYHtml, confirmUpload, createReport, ctaRun, curForm, curFormByName, daysLeftOf, daysToDue, defaultReadiness, deleteSession, detectReportType, disableTurn, docTitle, entityTable, escAttr, escapeHtml, evidenceBodyHtml, expandForms, exportBodyHtml, fChoice, fCount, fItem, fMoney, fPart, fSec, fText, fabAction, fabCtxText, fabMsg, fabReplyFor, fabSend, figLine, fileTab, filingCard, filingGroup, filingMetaLine, filingPhaseLabel, filterDocsNav, fmtDate, fmtReportDate, fmtRev, focusInput, formCounts, formsDoneTarget, gapCount, gapsPanel, genBe11Fin, genericFormHtml, go, goToNewSessionWithMessage, grpRow, hubFoundList, hubProbeBody, inReport, initSteps, isFiling, keyDatesCard, ledgerBodyHtml, listItemInfo, lrow, manualFallback, mapMetrics, mapTable, mappingTab, mappingTableHtml, markAllRead, markRailActive, masterFields, mdBlock, mdInline, missingFilingsUpload, moveOpLibInk, moveTabInk, newReportFormNote, newSession, notifClick, obNow, opAutoGrow, opHomeData, opKey, opLib, opLibRow, opMorphToFab, opSend, opStarter, opTurn, openAgentModal, openArtifact, openDoc, openDrawer, openFabFor, openFabSeeded, openFiling, openForm, openModal, openNewReportModal, openReport, openRptForm, openScheduleModal, openSessionById, openSkillModal, openUploadModal, operatorLaunch, ownTag, packageBodyHtml, pad2, paintSteps, parseList, phaseSpineHtml, pickMockFile, pickOther, pickStart, planApprovalCard, planApproveStatusText, planAreas, planAvs, planPeopleCard, planPeopleInner, planSummary, positionStartMenu, prevFilingName, rcpt, readinessBlockHtml, renderAgents, renderArt, renderArtForms, renderAttn, renderChatSession, renderConnectModal, renderDashboard, renderDoc, renderFabSuggests, renderFilings, renderHistorySession, renderHome, renderKpis, renderLink, renderMermaidBlocks, renderNotif, renderOpLib, renderOpPrompts, renderOpQuick, renderOperator, renderRecord, renderReport, renderSched, renderSections, renderSessionSuggests, renderSidebarSessions, renderSources, renderSpine, renderStartMenu, renderStep, renderTabs, renderUpcoming, renderWaitingBanner, resolveDocPath, reviewCounts, reviewFormView, reviewForms, reviewList, reviewTab, rosterChips, rptAcceptSetup, rptAddEntity, rptAddSource, rptApproveEntities, rptApproveScope, rptApproveValidation, rptAskAgent, rptAssignCollector, rptConfirmUpload, rptConnSel, rptConnect, rptConnectPick, rptDue, rptEditEntity, rptEnter, rptFile, rptFormData, rptGoTab, rptGoto, rptHubConfirm, rptHubScan, rptLog, rptManualUpload, rptMapRun, rptMarkReviewed, rptName, rptPeriod, rptRemapResolve, rptRemoveEntity, rptRescope, rptScan, rptScopeRun, rptScrollSpy, rptSetApproval, rptSetForm, rptSetProp, rptSetReadiness, rptSetupRun, rptSign, rptStage, rptTabLabel, rptToFile, rptToMapping, rptToReview, rptToScoping, rptToggleEditEntities, rptTogglePerson, rptTogglePlanEdit, rptUnstage, rptUpload, rptUploadFilings, rptValRun, rptValidate, scanOverlay, scheduleSteps, scopeSummary, scopeTable, scopeTableHtml, scopingTab, scrollDocAnchor, scrollThread, scrollToSec, scrow, seedFab, sendChat, sendReminder, sessionIndicator, sessionRow, setArt, setSessBarClean, setSessBarGeneric, setStarters, setupProgress, setupProposal, setupTab, shortMoney, showToast, showTyping, showWorkQueue, slugify, smartPrompt, smartSuggestChips, sortDocs, sourceDataStep, sourceRow, splitFrontmatter, splitRow, stageBody, stageDone, startClean, startFiling, startMenuMeta, starter, stepsPanelHtml, stubTab, suggestForm, sysTurn, thinkBodyHtml, thinkTitleHtml, toggleAgent, toggleAllForms, toggleArtForms, toggleBlockersOnly, toggleFab, toggleNotif, toggleOpMore, togglePin, toggleRecord, toggleSchedule, toggleSessionMenu, toggleSkill, toggleStartMenu, updateFabCtx, uploadBox, userSay, valChecks, valList, validateBlock, ymd });
+Object.assign(window as any, { connectDataStep, connectReceipt, rptConnReuse, rptConnDrop, rptSourcePull, pullResultsCard, pullPreviewHtml, rptColBy, rptColSet, rptUseData, connLibraryHtml, fileDropHtml, connPill, rptOpenPacket, rptClosePacket, renderPacketModal, packetProgress, packetItemRow, packetUpdateFoot, rptPacketInput, rptPacketReuse, rptPacketDropFile, rptPacketSubmit });
+/* Data collection surfaces — inline onclick handlers */
+Object.assign(window as any, { dcSourceDataSection, dcTriagePanel, dcFormGridView, dcSetSourcesView, dcRefreshFinalized, dcRefreshStandard, dcConnectSource, dcRequestSuggested, dcOpenForm, dcOpenFormBySource, dcCloseForm, dcResolveTriage, dcTriageChase, dcChooseSource, dcConfirmField, dcBulkConfirm, dcToggleOpen, dcToggleAssign, dcSetFilter, dcSetSearch, dcSetFormAssign, dcSetFieldAssign, dcToggleApply, dcApplyToggle, dcApplyAll, dcApplyCommit });
+/* Final approval / judgment ledger — inline onclick handlers */
+Object.assign(window as any, { reviewFinalPanel, rptSetFinalMode, rptFinalApprove, rptFinalSendBack });
+Object.assign(window as any, { actionsHTML, advance, agentCard, agentDispatchHtml, agentRowHtml, append, appendAgentDispatch, approveFromLedger, areaStats, attnItems, auditTrailBodyHtml, av, barClsForStatus, be11FormHtml, be577Stub, bindRptSpy, buildDocsTree, calShift, cbcrScopeTableHtml, chip, chooseAction, cite, cleanReply, clearSuggests, clearTyping, closeAllSessionMenus, closeDrawer, closeFab, closeModal, closeOpMore, closeRptForm, closeStartMenu, cmpReportsHtml, cmpYoYHtml, confirmUpload, createReport, ctaRun, curForm, curFormByName, daysLeftOf, daysToDue, defaultReadiness, deleteSession, detectReportType, disableTurn, docTitle, entityTable, escAttr, escapeHtml, evidenceBodyHtml, expandForms, exportBodyHtml, fChoice, fCount, fItem, fMoney, fPart, fSec, fText, fabAction, fabCtxText, fabMsg, fabReplyFor, fabSend, figLine, fileTab, filingCard, filingGroup, filingMetaLine, filingPhaseLabel, filterDocsNav, fmtDate, fmtReportDate, fmtRev, focusInput, formCounts, formsDoneTarget, gapCount, gapsPanel, genBe11Fin, genericFormHtml, go, goToNewSessionWithMessage, grpRow, hubFoundList, hubPreviewTable, hubProbeBody, inReport, initSteps, isFiling, keyDatesCard, ledgerBodyHtml, listItemInfo, lrow, manualFallback, mapMetrics, mapTable, mappingTab, mappingTableHtml, markAllRead, markRailActive, masterFields, mdBlock, mdInline, moveOpLibInk, moveTabInk, newReportFormNote, newSession, notifClick, obNow, opAutoGrow, opKey, opLib, opLibRow, opMorphToFab, opSend, opStarter, opTurn, openAgentModal, openArtifact, openDoc, openDrawer, openFabFor, openFabSeeded, openFiling, openForm, formTab, formOverviewHtml, renderFormPage, currentFormUpload, currentFormOperatorAct, backToProject, formCompleteness, formReadiness, ovRow, openModal, openNewReportModal, openProject, openProjectForm, openReport, openRptForm, projectReportType, renderSetupWizard, enterProject, inReportFlow, setReportHeader, openScheduleModal, openSessionById, openSkillModal, openUploadModal, operatorLaunch, ownTag, packageBodyHtml, pad2, paintSteps, parseList, phaseSpineHtml, pickMockFile, pickOther, pickStart, startProject, planApprovalCard, planApproveStatusText, planAreas, planAvs, planPeopleCard, planPeopleInner, planSummary, positionStartMenu, prevFilingName, rcpt, readinessBlockHtml, renderAgents, renderArt, renderArtForms, renderAttn, renderChatSession, renderConnectModal, portfolioSummaryHtml, renderDoc, renderFabSuggests, renderFilings, renderHistorySession, renderHome, renderKpis, renderLink, renderMermaidBlocks, renderNotif, renderOpLib, renderOpPrompts, renderOpQuick, renderOperator, renderRecord, renderReport, renderSched, renderSections, renderSessionSuggests, renderSidebarSessions, renderSources, renderSpine, renderStartMenu, renderStep, renderTabs, renderUpcoming, renderWaitingBanner, resolveDocPath, reviewCounts, reviewFormView, reviewForms, reviewList, reviewTab, rosterChips, rptAcceptSetup, rptAddEntity, rptAddSource, rptApproveEntities, rptApproveScope, rptApproveValidation, rptAskAgent, rptAssignCollector, rptConfirmUpload, rptConnSel, rptConnect, rptConnectPick, rptDue, rptEditEntity, rptEnter, rptFile, rptFormData, rptGoTab, rptGoto, rptHubConfirm, rptHubScan, rptLog, rptTogglePreview, rptManualUpload, rptMapRun, rptMarkReviewed, rptName, rptPeriod, rptRemapResolve, rptRemoveEntity, rptReopenStage, rptRescope, rptScan, rptScopeRun, rptScrollSpy, rptSetApproval, rptSetReminders, planReminderCard, planGlobal, rptSetForm, rptSetProp, rptSetReadiness, rptSetupRun, rptSign, rptStage, rptTabLabel, rptToFile, rptToMapping, rptToReview, rptToScoping, rptToggleEditEntities, rptTogglePerson, rptTogglePlanEdit, rptUnstage, rptUpload, rptUploadFilings, rptValRun, rptValidate, scanOverlay, scheduleSteps, scopeSummary, scopeTable, scopeTableHtml, scopingTab, scrollDocAnchor, scrollThread, scrollToSec, scrow, seedFab, sendChat, sendReminder, sessionIndicator, sessionRow, setArt, setSessBarClean, setSessBarGeneric, setStarters, setupProgress, setupProposal, setupTab, shortMoney, showToast, showTyping, showWorkQueue, slugify, smartPrompt, smartSuggestChips, sortDocs, sourceDataStep, sourceRow, splitFrontmatter, splitRow, stageBody, stageDone, startClean, startFiling, startMenuMeta, starter, stepsPanelHtml, stubTab, suggestForm, sysTurn, thinkBodyHtml, thinkTitleHtml, toggleAgent, toggleAllForms, toggleArtForms, toggleBlockersOnly, toggleFab, toggleNotif, toggleOpMore, togglePin, toggleRecord, toggleSchedule, toggleSessionMenu, toggleSkill, toggleStartMenu, updateFabCtx, uploadBox, userSay, valChecks, valList, validateBlock, ymd });
 
 let _legacyStarted = false;
 export function initLegacy(){
@@ -3243,7 +4809,8 @@ if(typeof mermaid!=='undefined'){
 }
 document.body.classList.add('op-home');
 renderStartMenu(); renderOperator(); renderAgents(); renderArt(); renderSched(); renderSidebarSessions(); renderNotif();
-try{ const _q=new URLSearchParams(location.search); const _p=_q.get('ob'); if(_p && OB_TYPES[_p]) openReport(_p); const _v=_q.get('view'); if(_v && document.getElementById('view-'+_v)) go(_v); }catch(e){}
+try{ applyRoute(); syncUrl(true); }catch(e){}
+window.addEventListener('popstate',(e)=>{ __routeDepth=(e.state&&typeof e.state.d==='number')?e.state.d:0; try{ applyRoute(); }catch(err){} });
 window.addEventListener('resize',()=>{ if(document.querySelector('.view.active')?.id==='view-home') moveOpLibInk(); if(inReport()) moveTabInk(); if(document.getElementById('startMenu')?.classList.contains('open')) positionStartMenu(); });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeDrawer();document.getElementById('notifPanel')?.classList.remove('open');closeAllSessionMenus();closeFab();}});
 document.querySelector('.nav')?.addEventListener('scroll',closeAllSessionMenus);

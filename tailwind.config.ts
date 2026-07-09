@@ -46,30 +46,6 @@ const config: Config = {
           DEFAULT: "var(--surface)",
           foreground: "var(--text)",
         },
-
-        /* Operator home (v0 / Unify-derived). Values live on `.ophome`
-           (src/styles/operator-home.css); scoped there so they never touch
-           the light app views. Channel-based entries support /alpha. */
-        "oh-brand": "rgb(var(--oh-brand-rgb) / <alpha-value>)",
-        "oh-brand-strong": "var(--oh-brand-strong)",
-        "oh-brand-deep": "var(--oh-brand-deep)",
-        "oh-brand-fg": "var(--oh-brand-fg)",
-        "oh-fg": "var(--oh-fg)",
-        "oh-fg-muted": "var(--oh-fg-muted)",
-        "oh-surface": "var(--oh-surface)",
-        "oh-surface-raised": "var(--oh-surface-raised)",
-        "oh-hairline": "var(--oh-hairline)",
-        "oh-border": "var(--oh-border)",
-        "oh-popover": "var(--oh-popover)",
-        "oh-ring": "var(--oh-ring)",
-        "oh-review": "rgb(var(--oh-review-rgb) / <alpha-value>)",
-        "oh-review-fg": "var(--oh-review-fg)",
-        "oh-waiting": "rgb(var(--oh-waiting-rgb) / <alpha-value>)",
-        "oh-waiting-fg": "var(--oh-waiting-fg)",
-        "oh-active": "rgb(var(--oh-active-rgb) / <alpha-value>)",
-        "oh-active-fg": "var(--oh-active-fg)",
-        "oh-filed": "rgb(var(--oh-filed-rgb) / <alpha-value>)",
-        "oh-filed-fg": "var(--oh-filed-fg)",
       },
       borderRadius: {
         lg: "var(--r-lg)",
