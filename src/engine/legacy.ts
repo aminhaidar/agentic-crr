@@ -252,8 +252,8 @@ const REPORT_TYPES=[
   {code:'SF-425',name:'Federal Financial Report',sub:'Federal Financial Report · GSA',unit:'federal award',formCode:'SF-425',formNote:'One form per federal award.'},
 ];
 /* ---------- navigation (no dead ends) ---------- */
-const titles={home:'Operator',filings:'Projects',agents:'Agents & Skills',artifacts:'Artifacts',sources:'Sources',schedules:'Schedules',settings:'Settings',docs:'Product Docs',session:'Session',filing:'Report',form:'Form',onboard:'Start a report',setup:'Start a project',report:'Project'};
-const globalViews=['home','filings','artifacts','sources','schedules','settings','docs'];
+const titles={home:'Operator',dashboard:'Portfolio',filings:'Projects',agents:'Agents & Skills',artifacts:'Artifacts',sources:'Sources',schedules:'Schedules',settings:'Settings',docs:'Product Docs',session:'Session',filing:'Report',form:'Form',onboard:'Start a report',setup:'Start a project',report:'Project'};
+const globalViews=['home','dashboard','filings','artifacts','sources','schedules','settings','docs'];
 const navFor={filing:'filings',form:'filings',agents:'settings',session:'',onboard:'home',setup:'filings',report:'filings'};
 const backTargets={filing:'filings',form:'filings',agents:'settings',onboard:'home',setup:'filings',report:'filings'};
 let currentSessionId=null, docsInit=false;
@@ -346,7 +346,6 @@ function applyRoute(){
    transition re-enter go() to perform the real navigation while fully covered. */
 let __opTransitioning=false;
 function go(view){
-  if(view==='dashboard') view='filings'; // Portfolio merged into Projects
   if(!__opTransitioning){
     const bridge=(window as any).__opThemeTransition;
     const reduce=window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -389,6 +388,7 @@ function go(view){
   document.body.classList.toggle('in-setup', view==='setup');
   if(view!=='report' && view!=='setup') closeFab();
   if(view==='home') renderOperator();
+  if(view==='dashboard') renderDashboard();
   if(view==='filings') renderFilings();
   if(view==='sources') renderSources();
   updateFabCtx(view);
@@ -1229,6 +1229,9 @@ function renderOperator(){
   setTimeout(()=>moveOpLibInk(),20);
 }
 function renderHome(){ renderOperator(); } /* alias for legacy callers */
+/* Portfolio view — the live overview (stats, work queue, deadlines, agent
+   activity) as its own destination, distinct from the Projects report list. */
+function renderDashboard(){ const el=document.getElementById('dashWrap'); if(el) el.innerHTML=portfolioSummaryHtml(); }
 const OP_QUICK=['be11','be577','be125'];
 const OP_QUICK_MORE=['be185','abs1','aies','qfr9'];
 function renderOpQuick(){

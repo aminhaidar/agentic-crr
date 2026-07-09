@@ -1565,57 +1565,73 @@
   body:not(.in-report):not(.in-setup) .fab-panel{display:none}
 
   /* =============================================================
-     OPERATOR HOME — Direction B: a LIGHT, agentic "generative" surface.
-     The whole app is light; the agentic signal is a restrained teal/blue
-     generative treatment RESERVED for the Operator — a soft gradient wash
-     behind the hero, an animated gradient-ring composer, and teal accents.
-     Scoped to body.op-home so the work views are untouched. The sidebar +
-     work surfaces keep the base light system (no dark overrides).
+     OPERATOR HOME — a light page with a single, elevated DARK hero
+     panel (the Workiva "overview box" pattern) that holds the Operator
+     greeting + composer, then the library on the light canvas below.
+     Teal→blue is the agentic accent, reserved for the Operator.
   =============================================================*/
   body.op-home{--op-brand:#0075db;--op-teal:#17b4c9}
-
-  /* soft generative wash behind the hero — the only "AI" color on the canvas */
-  body.op-home .main::before{
-    content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  /* full-bleed dark hero that dissolves into the light page — a region, not a box */
+  body.op-home .main{
     background:
-      radial-gradient(62% 52% at 50% -8%, rgba(0,117,219,.13), rgba(0,117,219,0) 60%),
-      radial-gradient(46% 42% at 78% -4%, rgba(23,180,201,.13), rgba(23,180,201,0) 60%);
+      radial-gradient(100% 55% at 50% 0%, rgba(63,143,224,.22), rgba(63,143,224,0) 58%),
+      linear-gradient(180deg,#0f1e3d 0px,#17294c 360px,#233a5f 520px,#f4f5f8 640px);
   }
-  body.op-home .op-stage{position:relative;z-index:1}
-
-  /* hero mark — the Workiva logo lifted on a soft teal/blue bloom */
-  body.op-home .op-hero-mark{position:relative;background:linear-gradient(135deg,#0075db,#17b4c9);box-shadow:0 14px 40px rgba(0,117,219,.28),0 4px 12px rgba(23,180,201,.22)}
+  body.op-home .op-stage{position:relative;z-index:1;max-width:820px;padding:46px 28px 88px}
+  body.op-home .op-hero{padding-bottom:8px}
+  /* hero mark — Workiva logo on a soft teal/blue bloom */
+  body.op-home .op-hero-mark{width:48px;height:48px;position:relative;background:linear-gradient(135deg,#2f7fd0,#17b4c9);box-shadow:0 10px 30px rgba(0,117,219,.4)}
   body.op-home .op-hero-mark img{width:100%;height:100%;border-radius:15px;object-fit:cover}
-  body.op-home .op-hero-mark::after{
-    content:"";position:absolute;inset:-15px;border-radius:24px;z-index:-1;
-    background:radial-gradient(closest-side, rgba(23,140,205,.32), rgba(23,140,205,0) 72%);
-    animation:opBloom 3.6s ease-in-out infinite;
-  }
+  body.op-home .op-hero-mark::after{content:"";position:absolute;inset:-14px;border-radius:22px;z-index:-1;background:radial-gradient(closest-side,rgba(63,160,220,.35),rgba(63,160,220,0) 72%);animation:opBloom 3.6s ease-in-out infinite}
   @keyframes opBloom{0%,100%{opacity:.5;transform:scale(.94)}50%{opacity:1;transform:scale(1.12)}}
+  body.op-home .op-greet{color:#f4f7fc;font-size:27px;margin:16px 0 7px}
+  body.op-home .op-sub{color:rgba(226,234,246,.68);font-size:14.5px;max-width:500px;margin:0 0 22px}
 
-  /* primary quick-start + send — teal→blue generative gradient */
-  body.op-home .op-qbtn.primary{background:linear-gradient(135deg,#0075db,#17b4c9);border-color:transparent;color:#fff;box-shadow:0 8px 22px rgba(0,117,219,.28)}
-  body.op-home .op-qbtn.primary:hover{background:linear-gradient(135deg,#0e86e6,#1fc3d8)}
+  /* quick-start chips — glass on the dark panel */
+  body.op-home .op-quick{margin-bottom:18px}
+  body.op-home .op-qbtn{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.14);color:#eaf1f9;box-shadow:none;backdrop-filter:blur(6px)}
+  body.op-home .op-qbtn:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.24);transform:translateY(-1px)}
+  body.op-home .op-qbtn.primary{background:linear-gradient(135deg,#0e86e6,#18b6cf);border-color:transparent;color:#fff;box-shadow:0 6px 18px rgba(0,120,200,.4)}
+  body.op-home .op-qbtn.primary:hover{background:linear-gradient(135deg,#1f92ef,#22c1d8)}
+  body.op-home .op-qbtn.ghost{color:rgba(226,234,246,.75)}
+  body.op-home .op-qmore-menu{background:#12213d;border-color:rgba(255,255,255,.14);box-shadow:0 20px 50px rgba(0,0,0,.5)}
+  body.op-home .op-qmore-item:hover{background:rgba(255,255,255,.06)}
+  body.op-home .op-qmore-sub{color:rgba(226,234,246,.72)}
 
-  /* composer — THE hero: an animated generative gradient ring */
-  body.op-home .op-composer{
-    border-radius:22px;padding:1.6px;
-    background:linear-gradient(120deg,#0075db,#17b4c9,#5ee0d3,#0075db);background-size:280% 280%;
-    box-shadow:0 20px 50px rgba(20,30,60,.12);
-    animation:rise .5s var(--ease-out) .14s both, opRing 7s ease infinite;
+  /* composer — compact dark-glass input inside the panel */
+  body.op-home .op-composer{width:100%;max-width:600px}
+  body.op-home .op-composer-in{
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:14px;
+    padding:13px 14px 10px;min-height:auto;
+    box-shadow:0 8px 24px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.05);backdrop-filter:blur(8px);
   }
-  @keyframes opRing{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
-  body.op-home .op-composer-in{background:var(--surface);border:none;border-radius:20.5px;box-shadow:none;min-height:150px}
-  body.op-home .op-composer-in:focus-within{box-shadow:inset 0 0 0 1px rgba(0,117,219,.16)}
-  body.op-home .op-send{background:linear-gradient(135deg,#0075db,#17b4c9);box-shadow:0 6px 16px rgba(0,117,219,.30)}
-  body.op-home .op-send:hover{background:linear-gradient(135deg,#0e86e6,#1fc3d8)}
+  body.op-home .op-composer-in textarea{color:#f4f7fc;font-size:14.5px;min-height:44px;max-height:150px}
+  body.op-home .op-composer-in textarea::placeholder{color:rgba(226,234,246,.5)}
+  body.op-home .op-composer-in:focus-within{border-color:rgba(63,160,220,.7);box-shadow:0 0 0 3px rgba(63,143,224,.18),0 10px 28px rgba(0,0,0,.28)}
+  body.op-home .op-plus{width:32px;height:32px;background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);color:rgba(226,234,246,.75)}
+  body.op-home .op-plus:hover{border-color:rgba(63,160,220,.7);color:#9fd0f2}
+  body.op-home .op-ctl-ghost{width:32px;height:32px;color:rgba(226,234,246,.6)}
+  body.op-home .op-ctl-ghost:hover{background:rgba(255,255,255,.08);color:#eaf1f9}
+  body.op-home .op-send{width:32px;height:32px;background:linear-gradient(135deg,#0e86e6,#18b6cf);box-shadow:0 4px 12px rgba(0,120,200,.42)}
+  body.op-home .op-send:hover{background:linear-gradient(135deg,#1f92ef,#22c1d8)}
 
-  /* prompt chips + library — teal-blue accents on the light base */
-  body.op-home .op-prompt:hover{border-color:rgba(0,117,219,.5);color:var(--accent);background:rgba(0,117,219,.06)}
+  /* prompt chips — glass on the panel */
+  body.op-home .op-prompts{margin-top:18px}
+  body.op-home .op-prompt{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.18);color:rgba(233,240,249,.9);backdrop-filter:blur(6px)}
+  body.op-home .op-prompt:hover{border-color:rgba(120,190,240,.7);color:#fff;background:rgba(63,143,224,.24)}
+
+  /* library — on the LIGHT canvas below the hero */
+  body.op-home .op-lib{max-width:820px;margin:48px auto 0}
   body.op-home .op-lib-ink{background:linear-gradient(90deg,#0075db,#17b4c9)}
   body.op-home .op-row-ic{background:rgba(0,117,219,.12);color:#0062b8}
 
-  @media(prefers-reduced-motion:reduce){body.op-home .op-composer,body.op-home .op-hero-mark::after{animation:none}}
+  /* Operator nav item — the special agentic entry (persistent, all views) */
+  .nav-item[data-nav="home"]{background:linear-gradient(135deg,rgba(0,117,219,.09),rgba(23,180,201,.10));color:var(--accent);font-weight:600}
+  .nav-item[data-nav="home"] svg{color:#0075db;stroke-width:1.9}
+  .nav-item[data-nav="home"]:hover{background:linear-gradient(135deg,rgba(0,117,219,.14),rgba(23,180,201,.15))}
+  .nav-item[data-nav="home"].active{background:linear-gradient(135deg,rgba(0,117,219,.18),rgba(23,180,201,.2))}
+
+  @media(prefers-reduced-motion:reduce){body.op-home .op-hero-mark::after{animation:none}}
 
   /* ---- Validate tab: edit-check list ---- */
   .vchk-list{display:flex;flex-direction:column;gap:8px;margin-top:2px}
