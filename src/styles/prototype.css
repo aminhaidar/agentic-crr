@@ -177,7 +177,11 @@
   .crumbs .c-home{color:var(--text-3);font-weight:500;cursor:pointer;transition:color var(--dur-1) var(--ease)}
   .crumbs .c-home:hover{color:var(--accent)}
   .crumbs .sep{color:var(--text-3);font-weight:400}
-  .crumbs .c-cur{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .crumbs .c-cur{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:7px;min-width:0}
+  .crumbs .crumb-mid{color:var(--text-3);font-weight:500;cursor:pointer;white-space:nowrap;transition:color var(--dur-1) var(--ease)}
+  .crumbs .crumb-mid:hover{color:var(--accent)}
+  .crumbs .crumb-arrow{color:var(--text-3);font-weight:400;flex:none}
+  .crumbs .crumb-cur{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .spacer{flex:1}
   .presence{display:flex;align-items:center}
   .presence .av{margin-left:-7px;border:2px solid #fff;transition:transform var(--dur-1) var(--ease);cursor:default}
@@ -750,6 +754,7 @@
   /* ---- Home: upcoming reports calendar ---- */
   .upcoming-wrap{display:flex;gap:28px;align-items:flex-start;padding:20px 22px 20px}
   .upcoming-cal{flex:none;width:222px}
+  .proj-cal{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border-2)}
   .mc-monthbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
   .mc-nav{width:24px;height:24px;flex:none;border-radius:var(--r-sm);border:1px solid var(--border-2);background:var(--surface);color:var(--text-2);display:grid;place-items:center;cursor:pointer;transition:background var(--dur-1) var(--ease),color var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease)}
   .mc-nav:hover{background:var(--accent-weak);color:var(--accent);border-color:var(--accent)}
@@ -1522,7 +1527,12 @@
   .dash-dl-h{font-size:13px;font-weight:600;color:var(--text)}
   .dash-dl-m{font-size:11.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .dash-feed{display:flex;flex-direction:column;gap:2px}
-  .dash-feed-row{display:flex;align-items:center;gap:11px;padding:9px 4px}
+  .dash-feed-row{display:flex;align-items:center;gap:11px;padding:9px 4px;width:100%;text-align:left;font:inherit;color:inherit}
+  button.dash-feed-row{border:none;background:none;border-radius:var(--r-sm);cursor:pointer;transition:background var(--dur-1) var(--ease)}
+  button.dash-feed-row:hover{background:var(--surface-3)}
+  button.dash-feed-row:hover .dash-feed-chev{color:var(--accent);opacity:1;transform:translateX(0)}
+  .dash-feed-chev{flex:none;color:var(--text-3);opacity:0;transform:translateX(-4px);transition:opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease),color var(--dur-1) var(--ease)}
+  .dash-feed-chev svg{width:15px;height:15px;display:block}
   .dash-feed-ic{flex:none;width:28px;height:28px;border-radius:8px;background:var(--accent-weak);color:var(--accent);display:grid;place-items:center}.dash-feed-ic svg{width:15px;height:15px}
   .dash-feed-txt{flex:1;min-width:0}
   .dash-feed-h{font-size:12.5px;font-weight:600;color:var(--text)}
@@ -2103,7 +2113,9 @@
   .dc-tri-t{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:13px;font-weight:650;color:var(--text)}
   .dc-tri-m{font-size:12px;color:var(--text-2);margin-top:2px;line-height:1.5}
   .dc-tri-tag{grid-area:tag;justify-self:end}
-  .dc-tri-acts{grid-area:acts;display:flex;flex-wrap:wrap;gap:7px;margin-top:4px}
+  .dc-tri-acts{grid-area:acts;display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:4px}
+  .dc-tri-task{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text-2);background:var(--surface-3);border:1px solid var(--border-2);border-radius:999px;padding:5px 11px}
+  .dc-tri-task svg{width:13px;height:13px;flex:none;color:var(--text-3)}
   /* Surface B/C — drill-in field grid */
   .dc-drillin{display:flex;flex-direction:column;gap:14px}
   .dc-gridcard,.dc-respcard{border:1px solid var(--border-2);background:var(--surface);border-radius:var(--r-md);padding:15px 16px}
