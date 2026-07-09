@@ -354,11 +354,11 @@ function go(view){
   if(!__opTransitioning){
     const bridge=(window as any).__opThemeTransition;
     const reduce=window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    // Direction B: the whole app is light now (the Operator home is a light
-    // "generative" surface, not a dark stage), so there is no dark/light
-    // boundary to mask — the theme crossfade stays dormant.
-    const wasDark=false;
-    const willDark=false;
+    // The Operator home is a dark stage; the work views are light. When a
+    // navigation crosses that boundary, hand the swap to the React veil so the
+    // theme change is a smooth crossfade instead of a hard cut.
+    const wasDark=document.body.classList.contains('op-home');
+    const willDark=(view==='home');
     if(bridge && !reduce && wasDark!==willDark){
       __opTransitioning=true;
       bridge({ toDark:willDark, run:()=>{ try{ go(view); } finally { __opTransitioning=false; } } });

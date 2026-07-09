@@ -34,6 +34,13 @@ export function ThemeTransition() {
   const running = useRef(false);
 
   useEffect(() => {
+    // Never let the animation wedge navigation: race every awaited step against
+    // a timeout, and guarantee the swap (`run`) fires exactly once. If the
+    // rAF-driven animation stalls (backgrounded tab, throttling), we degrade to
+    // an instant swap instead of hanging.
+    const withTimeout = (p: Promise<unknown>, ms: number) =>
+      Promise.race([p, new Promise((r) => setTimeout(r, ms))]);
+
     window.__opThemeTransition = ({ toDark, run }) => {
       // Reduced motion, or an in-flight transition: swap instantly.
       if (prefersReducedMotion() || running.current) {
@@ -42,32 +49,43 @@ export function ThemeTransition() {
       }
       running.current = true;
 
+      let ran = false;
+      const doRun = () => {
+        if (!ran) {
+          ran = true;
+          run();
+        }
+      };
+
       setToDark(toDark);
       setActive(true);
 
       void (async () => {
-        // Fade the veil in just enough to mask the swap.
-        await controls.start({
-          opacity: 1,
-          transition: { duration: COVER_MS, ease: EASE },
-        });
-
-        // Covered — swap the view + theme class behind the veil.
-        run();
-
-        // Let the browser paint the new theme before we reveal it.
-        await new Promise<void>((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-        );
-
-        // Fade the veil back out over the new page.
-        await controls.start({
-          opacity: 0,
-          transition: { duration: REVEAL_MS, ease: EASE },
-        });
-
-        setActive(false);
-        running.current = false;
+        try {
+          // Fade the veil in just enough to mask the swap.
+          await withTimeout(
+            controls.start({ opacity: 1, transition: { duration: COVER_MS, ease: EASE } }),
+            COVER_MS * 1000 + 250,
+          );
+          // Covered — swap the view + theme class behind the veil.
+          doRun();
+          // Let the browser paint the new theme before we reveal it.
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          );
+          // Fade the veil back out over the freshly themed page.
+          await withTimeout(
+            controls.start({ opacity: 0, transition: { duration: REVEAL_MS, ease: EASE } }),
+            REVEAL_MS * 1000 + 300,
+          );
+        } catch {
+          /* fall through to cleanup */
+        } finally {
+          doRun(); // safety — never skip the navigation
+          controls.set({ opacity: 0 });
+          setActive(false);
+          running.current = false;
+        }
       })();
     };
 
