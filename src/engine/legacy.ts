@@ -3005,8 +3005,14 @@ function setupTab(){
    uploads the one thing the hub doesn't have (previous filings). A quieter
    manual-upload path is available at every step. */
 function hubProbeBody(){
-  const sys=[['Workiva Data Hub','Entity register + trial balance'],['NetSuite · ERP','Consolidated ledger'],['Prior-year filings',"Last year's filed report"]];
-  const probes=sys.map((p,i)=>`<div class="probe" style="animation-delay:${i*.12}s"><div class="probe-ic">${OB_ICONS.src}</div><div class="probe-main"><div class="probe-name">${p[0]}</div><div class="probe-sub">${p[1]}</div></div><div class="probe-state"><span class="probe-dot"></span>scanning…</div></div>`).join('');
+  const r=OB_TYPES[RPT.type];
+  const X='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  const items=[
+    ['entity','Entity List','Workiva Data Hub · entity register'],
+    ['tb',`Trial Balance · ${r.period}`,'NetSuite · consolidated ledger'],
+    ['prior','Prior-year filings',`Last year's filed ${r.code}`],
+  ];
+  const probes=items.map((p,i)=>`<div class="probe scanning" data-k="${p[0]}" style="animation-delay:${i*.1}s"><div class="probe-ic"><span class="probe-dot"></span><span class="probe-check">${OB_ICONS.check}</span><span class="probe-x">${X}</span></div><div class="probe-main"><div class="probe-name">${p[1]}</div><div class="probe-sub">${p[2]}</div></div><div class="probe-state">scanning…</div></div>`).join('');
   return `<div class="conn-scanhead"><span class="think-spin"></span>Scanning your connected systems…</div><div class="conn-scan">${probes}</div>`;
 }
 function hubPreviewTable(key){
@@ -3065,13 +3071,24 @@ function sourceDataStep(){
 }
 function rptHubScan(){
   if(!RPT || RPT.hubScanning || RPT.hubScanned || RPT.uploaded) return;
-  RPT.hubScanning=true; if(inReportFlow()) renderReport();
-  rptLog('agent','Data Hub scan started','Looking for entity list, trial balance & prior filings');
+  // The scanning card is already on screen (rendered when the wizard opened),
+  // so DON'T re-render here — that would replay its entrance animation and
+  // flicker. Resolve each probe in place via the DOM, then settle once.
+  RPT.hubScanning=true;
+  rptLog('agent','Scanning connected systems','Data Hub · ERP · prior filings');
+  const resolve=(k,delay,ok)=>setTimeout(()=>{
+    if(!RPT || RPT.hubConfirmed || RPT.uploaded) return;
+    const it=document.querySelector(`.probe[data-k="${k}"]`);
+    if(it){ it.classList.remove('scanning'); it.classList.add(ok?'ok':'miss'); const s=it.querySelector('.probe-state'); if(s) s.textContent=ok?'found':'not found'; }
+  }, delay);
+  resolve('entity', 900, true);
+  resolve('tb', 1650, true);
+  resolve('prior', 2400, false);
   setTimeout(()=>{
     if(!RPT || RPT.hubConfirmed || RPT.uploaded){ if(RPT) RPT.hubScanning=false; return; }
     RPT.hubScanning=false; RPT.hubScanned=true;
-    rptLog('agent','Data Hub scan finished','Entity list & trial balance found · previous filings missing');
-    showToast('Data Hub scanned — 2 found · previous filings missing');
+    rptLog('agent','Scan complete','Entity list & trial balance found · prior filings missing');
+    showToast("Found 2 of 3 — add last year's filing");
     if(inReportFlow()) renderReport();
   }, AGENT_RUN_MS);
 }

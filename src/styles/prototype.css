@@ -1110,14 +1110,29 @@
   .conn-intro svg{width:17px;height:17px;color:var(--accent);flex:none;margin-top:1px}
   .conn-scanhead{display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:700;color:var(--accent);margin-bottom:10px}
   .conn-scan{display:flex;flex-direction:column;gap:8px}
-  .probe{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--border-2);border-radius:var(--r-md);background:var(--surface-2);animation:srcReveal .4s var(--ease-out) both}
-  .probe-ic{width:30px;height:30px;flex:none;border-radius:8px;display:grid;place-items:center;background:var(--surface-3);color:var(--text-2)}
-  .probe-ic svg{width:15px;height:15px}
+  .probe{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--border-2);border-radius:var(--r-md);background:var(--surface-2);animation:srcReveal .4s var(--ease-out) both;transition:border-color .35s var(--ease),background .35s var(--ease)}
+  .probe-ic{width:30px;height:30px;flex:none;border-radius:8px;display:grid;place-items:center;background:var(--surface-3);color:var(--text-2);transition:background .35s var(--ease),color .35s var(--ease)}
+  .probe-ic svg,.probe-ic>span{grid-area:1/1}
+  .probe-ic svg{width:16px;height:16px}
+  .probe-check,.probe-x{display:none;place-items:center}
   .probe-main{flex:1;min-width:0}
   .probe-name{font-size:13px;font-weight:600}
   .probe-sub{font-size:11px;color:var(--text-3);margin-top:1px}
-  .probe-state{font-size:11.5px;font-weight:600;color:var(--text-3);display:inline-flex;align-items:center;gap:8px}
-  .probe-dot{width:13px;height:13px;border-radius:50%;border:2px solid var(--accent-weak);border-top-color:var(--accent);animation:spin .7s linear infinite;flex:none}
+  .probe-state{font-size:11.5px;font-weight:600;color:var(--text-3);transition:color .35s var(--ease)}
+  .probe-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--accent-weak);border-top-color:var(--accent);animation:spin .7s linear infinite;flex:none}
+  /* resolved states — swap the spinner for a result, transition the color */
+  .probe.ok{border-color:var(--commit);background:var(--commit-bg)}
+  .probe.ok .probe-ic{background:var(--surface);color:var(--commit)}
+  .probe.ok .probe-dot,.probe.ok .probe-x{display:none}.probe.ok .probe-check{display:grid}
+  .probe.ok .probe-state{color:var(--commit)}
+  .probe.miss{border-color:var(--prepare);background:var(--prepare-bg)}
+  .probe.miss .probe-ic{background:var(--surface);color:var(--prepare)}
+  .probe.miss .probe-dot,.probe.miss .probe-check{display:none}.probe.miss .probe-x{display:grid}
+  .probe.miss .probe-state{color:var(--prepare)}
+
+  /* smooth entrance when the Quick setup view opens from the home */
+  #view-setup.view.active{animation:setupViewIn .5s var(--ease-out) both}
+  @keyframes setupViewIn{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
 
   .conn-list{display:flex;flex-direction:column;gap:10px}
   .conn-opt{position:relative;text-align:left;width:100%;display:flex;gap:12px;align-items:flex-start;border:1.5px solid var(--border-2);background:var(--surface-2);border-radius:var(--r-md);padding:14px 15px;cursor:pointer;font:inherit;transition:border-color var(--dur-2) var(--ease),background var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease);animation:srcReveal .4s var(--ease-out) both}
