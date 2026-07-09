@@ -96,15 +96,35 @@ let sessions=[
    history:[
      {kind:'op',lvl:'commit',html:`<p><strong>BE-125 FY23 is filed and archived.</strong> Quarterly services & IP transactions, submitted Feb 2024.</p>`},
    ]},
-  {id:'chat-portfolio',code:'AI',title:'Portfolio review',sub:'Ad-hoc question',kind:'chat',engine:'chatlog',pinned:false,status:'done',pct:null,people:['dr'],updated:'Yesterday',updatedSort:7,waitingOn:null,
+  {id:'chat-portfolio',code:'AI',title:'Portfolio review',sub:'Operator · ad-hoc question',kind:'chat',engine:'chatlog',pinned:false,status:'done',pct:null,people:['dr'],updated:'Yesterday',updatedSort:7,waitingOn:null,
    history:[
      {kind:'user',text:"What's our BE-11 exposure this year?"},
      {kind:'op',lvl:'read',html:`<p>Based on current entity data, <strong>42 foreign affiliates</strong> are in scope for FY25 — 31 unchanged from last year, 6 need ownership confirmation, 5 aren't decidable until current-year financials arrive. This is read-only — I'm not proposing any change here.</p>`},
    ]},
-  {id:'chat-be11-brazil',code:'AI',title:'BE-11 · Brazil balance question',sub:'In-project chat',kind:'chat',engine:'chatlog',project:'be11-fy25',pinned:false,status:'done',pct:null,people:['dr'],updated:'3h ago',updatedSort:6.5,waitingOn:null,
+  {id:'chat-deadlines',code:'AI',title:'What’s due this quarter?',sub:'Operator · ad-hoc question',kind:'chat',engine:'chatlog',pinned:false,status:'done',pct:null,people:['dr'],updated:'4h ago',updatedSort:4.6,waitingOn:null,
+   history:[
+     {kind:'user',text:'Which filings are due this quarter?'},
+     {kind:'op',lvl:'read',html:`<p>Three obligations fall in this quarter: <strong>BE-577 · Q2</strong> (due Jul 3), <strong>BE-11 · FY25</strong> (due Jul 10), and <strong>SF-425 · Q2</strong> (due Jul 31). CbCR · FY25 is next quarter (Sep 15). This is read-only — open a project to act on it.</p>`},
+   ]},
+  {id:'chat-cbcr-threshold',code:'AI',title:'CbCR filing threshold',sub:'Operator · ad-hoc question',kind:'chat',engine:'chatlog',pinned:false,status:'done',pct:null,people:['dr'],updated:'2d ago',updatedSort:7.5,waitingOn:null,
+   history:[
+     {kind:'user',text:'Why do we have a Country-by-Country obligation?'},
+     {kind:'op',lvl:'read',html:`<p>Your group’s consolidated revenue is above the <strong>€750M</strong> threshold that triggers Country-by-Country reporting (Form 8975), so a CbCR filing is required for the group. This is general guidance — no change proposed here.</p>`},
+   ]},
+  {id:'chat-be11-brazil',code:'AI',title:'BE-11 · Brazil balance question',sub:'In BE-11 · FY25 — project chat',kind:'chat',engine:'chatlog',project:'be11-fy25',pinned:false,status:'done',pct:null,people:['dr'],updated:'3h ago',updatedSort:6.5,waitingOn:null,
    history:[
      {kind:'user',text:'Why is the Brazil intercompany balance flagged on BE-11?'},
      {kind:'op',lvl:'read',html:`<p>The Brazil intercompany balance didn't tie to the consolidation by <strong>$1.2M</strong>, so Mapping &amp; Resolve held it for review rather than populate a figure it couldn't source. Open the project's Data collection stage to resolve it.</p>`},
+   ]},
+  {id:'chat-cbcr-scope',code:'AI',title:'CbCR · jurisdiction grouping',sub:'In Country-by-Country · FY25 — project chat',kind:'chat',engine:'chatlog',project:'cbcr-fy25',pinned:false,status:'done',pct:null,people:['dr'],updated:'40m ago',updatedSort:2.5,waitingOn:null,
+   history:[
+     {kind:'user',text:'How were the 6 tax jurisdictions grouped?'},
+     {kind:'op',lvl:'read',html:`<p>Scope &amp; Entity grouped the 6 jurisdictions by recommended outcome — <strong>5 reporting, 1 needs confirmation</strong>. Open the project’s scope plan to review or adjust the grouping.</p>`},
+   ]},
+  {id:'chat-sf425-award',code:'AI',title:'SF-425 · award mapping question',sub:'In SF-425 · Q2 — project chat',kind:'chat',engine:'chatlog',project:'sf425-q2',pinned:false,status:'done',pct:null,people:['dr'],updated:'20m ago',updatedSort:4.3,waitingOn:null,
+   history:[
+     {kind:'user',text:'Which award is the SF-425 pulling from?'},
+     {kind:'op',lvl:'read',html:`<p>The Mapping &amp; Resolve agent is matching drawdown data on <strong>USDA Award #4471</strong> to the SF-425 line items. Open the project to see mapped line items and evidence.</p>`},
    ]},
 ];
 
@@ -1353,9 +1373,23 @@ function renderOpLib(tab){
   if(tab==='conversations'){
     const sorted=sessions.slice().sort((a,b)=>a.updatedSort-b.updatedSort);
     rows=sorted.map(s=>{
-      const sm=STATUS_META[s.status]||{label:s.status,cls:'grey'};
-      const badge=`<span class="pill ${sm.cls}" style="margin-left:8px">${sm.label}</span>`;
-      return opLibRow(IC.chatDot, s.title+badge, s.sub, s.updated, `openSessionById('${s.id}')`);
+      // A conversation is project-related when it's a report thread (a filing is its own
+      // project) or a chat spun up from a project's AI FAB (`project` set). Those open the
+      // project page. Operator-only chats (no project) stay in the Operator chat.
+      const proj = s.kind==='chat'
+        ? (s.project && sessions.find(x=>x.id===s.project) ? s.project : null)
+        : s.id;
+      let badge;
+      if(s.kind==='chat'){
+        badge = proj
+          ? `<span class="pill blue" style="margin-left:8px">In ${sessions.find(x=>x.id===proj).code}</span>`
+          : `<span class="pill grey" style="margin-left:8px">Operator</span>`;
+      } else {
+        const sm=STATUS_META[s.status]||{label:s.status,cls:'grey'};
+        badge=`<span class="pill ${sm.cls}" style="margin-left:8px">${sm.label}</span>`;
+      }
+      const click = proj ? `openProject('${proj}')` : `openSessionById('${s.id}')`;
+      return opLibRow(IC.chatDot, s.title+badge, s.sub, s.updated, click);
     }).join('');
   } else if(tab==='artifacts'){
     const flat=[]; Object.keys(artifacts).forEach(k=>artifacts[k].forEach((a,idx)=>flat.push({...a,group:k,idx})));
