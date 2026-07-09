@@ -1,0 +1,104 @@
+/* ===========================================================================
+   Workiva Unify — v0 theme
+   ---------------------------------------------------------------------------
+   Drop this into a v0 project (e.g. app/globals.css, AFTER the Tailwind
+   directives) together with ./unify-tokens.css. It maps the shadcn/ui theme
+   variables that v0 generates onto the AUTHORITATIVE Unify design tokens
+   (unify-tokens.css, shipped by @workiva/unify-tokens 1.2.9), so v0's default
+   components render in Workiva's brand out of the box.
+
+   Source of truth: unify-tokens.css  (--u-* custom properties)
+   Brand font:      Roboto  (Unify default; swap for your licensed brand face
+                    such as AdelleSans if you have it)
+   Radii in Unify:  4 / 6 / 8 / 12 px   → base --radius = 8px
+
+   NOTE ON LIGHT vs DARK: the Unify token package ships a LIGHT scheme only —
+   it's an enterprise (mostly-light) system. Two blocks are provided below:
+     • :root  — faithful Unify LIGHT theme (use this to go fully on-brand).
+     • .dark  — an OPTIONAL brand-aligned dark theme for the "Operator launch
+                stage" aesthetic: our custom dark canvas, but every accent
+                pulled from Unify's brand blues so it still reads as Workiva.
+   Pick one path with v0; don't expect Unify to look dark by default.
+   =========================================================================== */
+
+@import "./unify-tokens.css";
+
+:root {
+  --radius: 8px;
+  --font-sans: "Roboto", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+
+  /* shadcn/ui theme  ←  Unify LIGHT tokens */
+  --background: var(--u-layer-default-background);          /* #FFFFFF */
+  --foreground: var(--u-text-default);                      /* near-black 78% */
+  --card: var(--u-layer-tertiary);                          /* #FFFFFF */
+  --card-foreground: var(--u-text-default);
+  --popover: var(--u-layer-tertiary);
+  --popover-foreground: var(--u-text-default);
+
+  --primary: var(--u-button-primary-background);            /* #0075DB */
+  --primary-foreground: var(--u-text-onColor);              /* #FFFFFF */
+
+  --secondary: var(--u-background-default);                 /* #EDEDED */
+  --secondary-foreground: var(--u-text-default);
+  --muted: var(--u-background-secondary);                   /* #FBFBFB */
+  --muted-foreground: var(--u-text-secondary);              /* black 64% */
+  --accent: var(--u-layer-primary-highlight);               /* #C2E2FF */
+  --accent-foreground: var(--u-text-decorative-blue-dark);  /* #002C52 */
+
+  --destructive: var(--u-layer-error);                      /* #CC0000 */
+  --destructive-foreground: var(--u-text-onColor);
+  --success: var(--u-layer-success);                        /* #2A8300 */
+  --warning: var(--u-layer-warning);                        /* #FFAF44 */
+
+  --border: var(--u-layer-default-border);                  /* #D6D6D6 */
+  --input: var(--u-input-default-border);                   /* #A3A3A3 */
+  --ring: var(--u-layer-default-border-focused);            /* #0062B8 */
+
+  /* Unify elevations (use for shadow-sm … shadow-xl equivalents) */
+  --shadow-1: var(--u-elevation-1);
+  --shadow-2: var(--u-elevation-2);
+  --shadow-3: var(--u-elevation-3);
+  --shadow-4: var(--u-elevation-4);
+
+  /* charts → Unify dataviz ramp */
+  --chart-1: var(--u-dataviz-primary);
+  --chart-2: var(--u-dataviz-aqua-500);
+  --chart-3: var(--u-dataviz-purple-500);
+  --chart-4: var(--u-dataviz-gold-500);
+  --chart-5: var(--u-dataviz-lime-600);
+}
+
+/* ---------------------------------------------------------------------------
+   OPTIONAL brand-aligned DARK theme (the "Operator launch stage" look).
+   Canvas is custom dark navy; every accent is a real Unify brand blue.
+   --------------------------------------------------------------------------- */
+.dark {
+  --background: #070a13;
+  --foreground: #f4f7fc;
+  --card: rgba(255, 255, 255, 0.045);
+  --card-foreground: #f4f7fc;
+  --popover: #0e1626;
+  --popover-foreground: #f4f7fc;
+
+  --primary: #0075db;                       /* --u-button-primary-background */
+  --primary-foreground: #ffffff;
+  --secondary: rgba(255, 255, 255, 0.06);
+  --secondary-foreground: #eef4fc;
+  --muted: rgba(255, 255, 255, 0.04);
+  --muted-foreground: rgba(226, 234, 246, 0.62);
+  --accent: rgba(63, 143, 224, 0.16);
+  --accent-foreground: #8fbcf0;
+
+  --destructive: #cc0000;                   /* --u-layer-error */
+  --destructive-foreground: #ffffff;
+  --success: #2a8300;                       /* --u-layer-success */
+  --warning: #ffaf44;                       /* --u-layer-warning */
+
+  --border: rgba(255, 255, 255, 0.12);
+  --input: rgba(255, 255, 255, 0.14);
+  --ring: #3f8fe0;                          /* luminous brand blue for focus */
+}
+
+body {
+  font-family: var(--font-sans);
+}
