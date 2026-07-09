@@ -2545,8 +2545,8 @@ function setReportHeader(r){
   setMark('rpMark'); setMark('setupMark');
   setText('rpTitle',`${r.code} Project`);
   setText('rpSub',`${r.full} · ${r.agency}`);
-  setText('setupTitle',`Start a ${r.code} project`);
-  setText('setupSub',`${r.full} · ${r.agency}`);
+  setText('setupTitle','Quick setup');
+  setText('setupSub',`${r.code} · ${r.full} · ${r.agency}`);
 }
 /* Opens a report. By default this launches the full-screen Setup wizard used to
    *start* a project; when the setup wizard completes the user enters the tabbed
@@ -2976,10 +2976,10 @@ function setupTab(){
     h+=rcpt('Entities & ownership approved','Entity & Ownership Scan',`${RPT.entities.length} entities · ownership &amp; revenue extracted ${chip('you approved')}`);
   } else {
     if(!RPT.scanRun){
-      h+=agentCard({icon:OB_ICONS.scan,name:'Entity & Ownership Scan',tag:'Step 2',role:"Reads the trial balance and prior filing to build your entity list — each affiliate, the parent's ownership %, and its revenue.",cta:ctaRun("rptScan()",'Scan my data for me',OB_ICONS.scan,'The Operator extracts entities, ownership and revenue.',RPT.scanning,'Scanning ledger & prior filing…')});
+      h+=agentCard({icon:OB_ICONS.scan,name:'Entity & Ownership Scan',tag:'Step 2 of 3',role:"Next I'll read the trial balance and prior filing to build your entity list — each affiliate, the parent's ownership %, and its revenue.",cta:ctaRun("rptScan()",'Scan my data',OB_ICONS.scan,"I'll extract entities, ownership and revenue.",RPT.scanning,'Reading ledger & prior filing…')});
       return h;
     }
-    h+=agentCard({icon:OB_ICONS.scan,name:'Entity & Ownership Scan',tag:'Step 2',role:'Here is the structure the scan extracted — every figure carries its source and confidence inline. Confirm it to continue.',body:entityTable(),cta:`<div class="agentc-cta"><button class="btn primary" onclick="rptApproveEntities()">${OB_ICONS.check}Confirm entities</button></div>`});
+    h+=agentCard({icon:OB_ICONS.scan,name:'Entity & Ownership Scan',tag:'Step 2 of 3',role:"Here's the structure I extracted — every figure carries its source and confidence inline. Confirm it and I'll continue.",body:entityTable(),cta:`<div class="agentc-cta"><button class="btn primary" onclick="rptApproveEntities()">${OB_ICONS.check}Confirm entities &amp; continue</button></div>`});
     return h;
   }
   if(RPT.setupDone){
@@ -2993,10 +2993,10 @@ function setupTab(){
     return h;
   }
   if(!RPT.setupRun){
-    h+=agentCard({icon:OB_ICONS.setup,name:'Filing Setup Assistant',tag:'Step 3',role:'Proposes the report name (type + period) and statutory due date from your source data and the BEA calendar.',cta:ctaRun("rptSetupRun()",'Set up the project for me',OB_ICONS.setup,'The Operator derives the name, period and due date.',RPT.setupProposing,'Deriving report name & due date…')});
+    h+=agentCard({icon:OB_ICONS.setup,name:'Filing Setup Assistant',tag:'Step 3 of 3',role:"Last step — I'll derive the report name (type + period) and statutory due date from your source data and the BEA calendar.",cta:ctaRun("rptSetupRun()",'Set up my project',OB_ICONS.setup,"I'll derive the name, period and due date.",RPT.setupProposing,'Deriving report name & due date…')});
     return h;
   }
-  h+=agentCard({icon:OB_ICONS.setup,name:'Filing Setup Assistant',tag:'Step 3',role:'Review the proposed details and set your internal readiness target, then confirm.',body:setupProposal(),cta:`<div class="agentc-cta"><button class="btn primary" onclick="rptAcceptSetup()">${OB_ICONS.check}Confirm setup</button></div>`});
+  h+=agentCard({icon:OB_ICONS.setup,name:'Filing Setup Assistant',tag:'Step 3 of 3',role:"Here's what I propose — review the details and set your internal readiness target, then confirm.",body:setupProposal(),cta:`<div class="agentc-cta"><button class="btn primary" onclick="rptAcceptSetup()">${OB_ICONS.check}Confirm &amp; finish setup</button></div>`});
   return h;
 }
 /* ---- Source data ingestion ----
@@ -3005,8 +3005,9 @@ function setupTab(){
    uploads the one thing the hub doesn't have (previous filings). A quieter
    manual-upload path is available at every step. */
 function hubProbeBody(){
-  const probes=['Entity register','Trial balance','Prior-year filings'].map((p,i)=>`<div class="probe" style="animation-delay:${i*.1}s"><div class="probe-ic">${OB_ICONS.src}</div><div class="probe-name">${p}</div><div class="probe-state"><span class="probe-dot"></span>searching…</div></div>`).join('');
-  return `<div class="conn-scanhead"><span class="think-spin"></span>Scanning your Data Hub…</div><div class="conn-scan">${probes}</div>`;
+  const sys=[['Workiva Data Hub','Entity register + trial balance'],['NetSuite · ERP','Consolidated ledger'],['Prior-year filings',"Last year's filed report"]];
+  const probes=sys.map((p,i)=>`<div class="probe" style="animation-delay:${i*.12}s"><div class="probe-ic">${OB_ICONS.src}</div><div class="probe-main"><div class="probe-name">${p[0]}</div><div class="probe-sub">${p[1]}</div></div><div class="probe-state"><span class="probe-dot"></span>scanning…</div></div>`).join('');
+  return `<div class="conn-scanhead"><span class="think-spin"></span>Scanning your connected systems…</div><div class="conn-scan">${probes}</div>`;
 }
 function hubPreviewTable(key){
   const r=OB_TYPES[RPT.type];
@@ -3053,14 +3054,14 @@ function manualFallback(){
 function sourceDataStep(){
   const r=OB_TYPES[RPT.type];
   if(!RPT.hubScanned){
-    return agentCard({icon:OB_ICONS.spark,name:'Source Discovery',tag:'Step 1',role:'The Operator checks your connected Data Hub for what this filing needs — the latest entity list, the trial balance for the period, and your previous filings.',body:hubProbeBody()})+manualFallback();
+    return agentCard({icon:OB_ICONS.spark,name:'Source Discovery',tag:'Step 1 of 3',running:true,role:`I'm scanning every system you've connected — your Data Hub, ERP and prior filings — for the data this ${r.code} needs. This only takes a moment.`,body:hubProbeBody()})+manualFallback();
   }
   const hasPrior=!!RPT.priorFiling;
   const status=hasPrior
-    ? 'Entity list, trial balance & your uploaded filing — ready to pull in.'
-    : `Add last year's ${r.code} above so I can baseline against it, then confirm.`;
+    ? "Entity list, trial balance and your uploaded filing — I'm ready to pull them in."
+    : `Add last year's ${r.code} above and I'll baseline against it — or use what I found now.`;
   const cta=`<div class="agentc-cta"><button class="btn primary" onclick="rptHubConfirm()">${OB_ICONS.check}Use these sources</button><span class="agent-status">${status}</span></div>`;
-  return agentCard({icon:OB_ICONS.spark,name:'Source Discovery',tag:'Step 1',role:`I checked your Data Hub for everything this filing needs. I found the latest <strong>Entity List</strong> and <strong>Trial Balance · ${r.period}</strong> — open a preview to check them before pulling them in. Your <strong>previous filings</strong> aren't in the Data Hub, so upload last year's ${r.code} right here.`,body:hubFoundList(),cta})+manualFallback();
+  return agentCard({icon:OB_ICONS.spark,name:'Source Discovery',tag:'Step 1 of 3',role:`Here's what I found. The latest <strong>Entity List</strong> and <strong>Trial Balance · ${r.period}</strong> are already in your Data Hub — preview them to check before I pull them in. I couldn't find your <strong>previous filings</strong>, so add last year's ${r.code} and I'll baseline against it.`,body:hubFoundList(),cta})+manualFallback();
 }
 function rptHubScan(){
   if(!RPT || RPT.hubScanning || RPT.hubScanned || RPT.uploaded) return;
