@@ -2690,7 +2690,9 @@ function renderSetupWizard(){
 }
 /* Setup complete → enter the tabbed project page at Overview. */
 function enterProject(){
-  RPT.tab='overview';
+  // Setup is done — land straight on Planning (the next agent step) instead of
+  // Overview, so the user doesn't have to hop Overview → Planning themselves.
+  RPT.tab = RPT.full ? 'scoping' : 'overview';
   go('report');
   scanOverlay(900);
   renderReport();
@@ -2914,8 +2916,15 @@ function rptOverviewHtml(){
   const needs=attnItems().filter(a=>!a.done);
   const totalEnt=RPT.entities.length;
   const strip=`<div class="rp-kpis">${rptKpisHtml()}</div>`;
-  const needsRows=needs.map(x=>`<div class="prow"><div class="pi info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg></div>
-    <div class="pb"><div class="pt">${x.t}</div><div class="pm">${STAGE_TODO[x.k]||''}</div></div><button class="prow-cta solid" onclick="rptGoTab('${x.k}')">Open</button></div>`).join('');
+  // Agent-driven CTA: the initial plan/collect steps hand straight to the
+  // agent (navigate + run) so it's one action, not "open, then run".
+  const nuCta=(k)=>{
+    if(k==='scoping' && !RPT.scopeRun) return ['Plan for me','rptToScoping()'];
+    if(k==='mapping' && !RPT.mapRun) return ['Collect for me','rptToMapping()'];
+    return ['Open',`rptGoTab('${k}')`];
+  };
+  const needsRows=needs.map(x=>{ const [lab,fn]=nuCta(x.k); return `<div class="prow"><div class="pi info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg></div>
+    <div class="pb"><div class="pt">${x.t}</div><div class="pm">${STAGE_TODO[x.k]||''}</div></div><button class="prow-cta solid" onclick="${fn}">${lab}</button></div>`; }).join('');
   const needsCard=`<div class="card nu-card"><div class="fd-card-h">Needs you${needs.length?`<span class="wq-count" style="background:var(--accent-weak);color:var(--accent)">${needs.length}</span>`:''}</div>${needs.length?needsRows:`<div class="nu-clear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>On track — nothing needs your confirmation right now.</div>`}</div>`;
   let formRows;
   if(RPT.scopeDone && totalEnt){
