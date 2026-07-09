@@ -461,7 +461,8 @@
   .lvl.read{background:var(--surface-3);color:var(--read)}.lvl.recommend{background:var(--accent-weak);color:var(--recommend)}
   .lvl.prepare{background:var(--prepare-bg);color:var(--prepare)}.lvl.commit{background:var(--commit-bg);color:var(--commit)}.lvl.sig{background:#1d1d1f;color:#fff}
 
-  .btn{border:none;border-radius:var(--r-md);padding:9px 16px;font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:background var(--dur-1) var(--ease),transform var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease)}
+  .btn{border:none;border-radius:var(--r-md);padding:9px 16px;font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;transition:background var(--dur-1) var(--ease),transform var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease)}
+  .btn svg{width:16px;height:16px;flex:none}
   .btn.primary{background:var(--accent);color:#fff;box-shadow:var(--shadow-accent)}.btn.primary:hover{background:var(--accent-hover)}
   .btn.sig{background:#1d1d1f;color:#fff;box-shadow:var(--shadow-dark)}.btn.sig:hover{background:#000}
   .btn.sec{background:#fff;border:1px solid var(--border);color:var(--text)}.btn.sec:hover{background:var(--surface-2);border-color:var(--border-3)}
@@ -1955,6 +1956,8 @@
   /* Connection library (reuse a workspace connection) */
   .conn-lib{margin-bottom:4px}
   .conn-lib-h,.pk-fill-h{font-size:12.5px;font-weight:650;color:var(--text-2);margin-bottom:10px}
+  .conn-lib-sub{display:block;font-size:11.5px;font-weight:500;color:var(--text-3);margin-top:3px}
+  .conn-lib-row .chipbtn.on{border-color:var(--accent);color:var(--accent);background:var(--accent-weak-2)}
   .conn-lib-list{display:flex;flex-direction:column;gap:8px}
   .conn-lib-row{display:flex;align-items:center;gap:12px;border:1.5px solid var(--border-2);background:var(--surface-2);border-radius:var(--r-md);padding:11px 13px;animation:srcReveal .4s var(--ease-out) both}
   .conn-lib-row.sel{border-color:var(--accent);background:var(--accent-weak-2);box-shadow:inset 0 0 0 1px var(--accent)}
@@ -1983,6 +1986,8 @@
   .file-read-head svg{width:15px;height:15px;flex:none}
   .file-read-name{font-family:var(--mono,ui-monospace,monospace);font-size:12px;color:var(--text)}
   .file-read-scan{display:flex;align-items:center;gap:9px;margin-top:11px;font-size:12.5px;font-weight:600;color:var(--accent)}
+  .file-read-think{margin-top:11px}
+  .file-read-think.done{margin-bottom:12px;padding-bottom:11px;border-bottom:1px solid var(--border-2)}
   .file-find-list{display:flex;flex-direction:column;gap:6px;margin-top:11px}
   .file-find{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--border-2);background:var(--surface);border-radius:var(--r-sm);padding:8px 11px;font-size:12.5px;animation:thinkIn .3s var(--ease-out) both}
   .file-find-ic{color:var(--commit);display:inline-flex}.file-find-ic svg{width:14px;height:14px}
@@ -2092,9 +2097,6 @@
   .dc-triage.clear svg{width:16px;height:16px}
   .dc-tri-list{display:flex;flex-direction:column;gap:8px}
   .dc-tri-row{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:"ic main tag" "ic acts acts";gap:4px 11px;align-items:center;border:1px solid var(--border-2);background:var(--surface-2);border-radius:var(--r-md);padding:11px 13px}
-  .dc-tri-row.amber{border-left:3px solid var(--prepare)}
-  .dc-tri-row.red{border-left:3px solid var(--danger)}
-  .dc-tri-row.blue{border-left:3px solid var(--accent)}
   .dc-tri-ic{grid-area:ic;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--surface);border:1px solid var(--border-2);color:var(--text-2)}
   .dc-tri-ic svg{width:16px;height:16px}
   .dc-tri-main{grid-area:main;min-width:0}
