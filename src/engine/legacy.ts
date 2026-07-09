@@ -350,8 +350,11 @@ function go(view){
   if(!__opTransitioning){
     const bridge=(window as any).__opThemeTransition;
     const reduce=window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const wasDark=document.body.classList.contains('op-home');
-    const willDark=view==='home';
+    // Direction B: the whole app is light now (the Operator home is a light
+    // "generative" surface, not a dark stage), so there is no dark/light
+    // boundary to mask — the theme crossfade stays dormant.
+    const wasDark=false;
+    const willDark=false;
     if(bridge && !reduce && wasDark!==willDark){
       __opTransitioning=true;
       bridge({ toDark:willDark, run:()=>{ try{ go(view); } finally { __opTransitioning=false; } } });
