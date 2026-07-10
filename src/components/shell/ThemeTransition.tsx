@@ -78,7 +78,7 @@ export function ThemeTransition() {
 
   // Solid destination-theme base color — no gradients, so the crossfade stays
   // quiet and the eye isn't drawn to the veil itself.
-  const background = toDark ? "#0a1122" : "#f4f5f8";
+  const background = toDark ? "#FBFBFB" : "#f4f5f8";
 
   return (
     <motion.div
