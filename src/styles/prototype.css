@@ -1615,10 +1615,17 @@
   body.op-home .slink-empty{color:rgba(0,0,0,.45)}
 
   body.op-home .main{
-    background:
-      radial-gradient(50% 40% at 50% -2%, rgba(0,117,219,.16) 0%, rgba(0,117,219,0) 60%),
-      radial-gradient(46% 36% at 82% 8%, rgba(0,194,209,.10) 0%, rgba(0,194,209,0) 62%),
-      linear-gradient(180deg,#F4F9FF 0%,#FAFCFF 42%,#FFFFFF 100%);
+    background:linear-gradient(180deg,#F6FAFF 0%,#FCFDFF 30%,#FFFFFF 62%);
+  }
+  /* one soft, wide brand glow at the top — calm and premium, no texture */
+  body.op-home .main::before{
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+    background:radial-gradient(64% 42% at 50% -8%, rgba(0,117,219,.16) 0%, rgba(0,117,219,0) 66%);
+    animation:opAurora 18s ease-in-out infinite;
+  }
+  @keyframes opAurora{
+    0%,100%{opacity:.85;transform:scale(1)}
+    50%{opacity:1;transform:scale(1.04)}
   }
   /* faint technical grid — "engineered / agentic" texture, fades out toward edges */
   body.op-home .main::before{
@@ -1678,18 +1685,10 @@
   body.op-home .op-qmore-item:hover{background:rgba(0,0,0,.04)}
   body.op-home .op-qmore-sub{color:rgba(0,0,0,.64)}
 
-  /* composer — the star: floating white card with a second card peeking behind */
-  body.op-home .op-composer{position:relative}
-  body.op-home .op-composer::before{
-    content:"";position:absolute;z-index:0;left:22px;right:22px;top:14px;bottom:-14px;
-    background:linear-gradient(180deg,rgba(255,255,255,.7),rgba(244,249,255,.55));
-    border:1px solid rgba(0,44,82,.06);border-radius:calc(var(--r-xl) + 4px);
-    box-shadow:0 20px 50px rgba(0,30,78,.10);
-  }
+  /* composer — the single hero surface: one clean, elevated white card */
   body.op-home .op-composer-in{
-    position:relative;z-index:1;
     background:#fff;border:1.5px solid #D6D6D6;
-    box-shadow:0 18px 48px rgba(0,30,78,.12),0 2px 6px rgba(0,30,78,.05);
+    box-shadow:0 16px 44px rgba(0,30,78,.10),0 2px 6px rgba(0,30,78,.04);
   }
   body.op-home .op-composer-in textarea{color:rgba(0,0,0,.87)}
   body.op-home .op-composer-in textarea::placeholder{color:rgba(0,0,0,.4)}
@@ -1705,8 +1704,10 @@
   body.op-home .op-send:hover{background:linear-gradient(155deg,#0062B8,#004f96)}
 
   /* prompt chips */
-  body.op-home .op-prompt{background:#fff;border-color:#D6D6D6;color:rgba(0,0,0,.64)}
-  body.op-home .op-prompt:hover{border-color:#0062B8;color:#0062B8;background:#C2E2FF}
+  body.op-home .op-prompt{background:transparent;border-color:transparent;color:rgba(0,0,0,.52)}
+  body.op-home .op-prompt svg{color:#0075DB;opacity:.9}
+  body.op-home .op-prompt:hover{border-color:transparent;color:#0062B8;background:rgba(0,117,219,.07)}
+  body.op-home .op-prompt:focus-visible{outline:2px solid #0062B8;outline-offset:2px}
 
   /* library */
   body.op-home .op-lib-tabs{border-bottom-color:#D6D6D6}
@@ -1714,11 +1715,34 @@
   body.op-home .op-lib-tab:hover{color:rgba(0,0,0,.78)}
   body.op-home .op-lib-tab.active{color:#002C52}
   body.op-home .op-lib-ink{background:linear-gradient(90deg,#0075DB,#0062B8)}
-  body.op-home .op-row:hover{background:rgba(0,0,0,.03)}
-  body.op-home .op-row-ic{background:#C2E2FF;color:#0062B8}
-  body.op-home .op-row-h{color:rgba(0,0,0,.87)}
+  body.op-home .op-row{padding:12px 12px;border-radius:10px}
+  body.op-home .op-row:hover{background:rgba(0,117,219,.05)}
+  body.op-home .op-row-ic{background:#EAF3FC;color:#0062B8}
+  body.op-home .op-row-h{color:rgba(0,0,0,.87);gap:9px}
   body.op-home .op-row-m,body.op-home .op-row-time{color:rgba(0,0,0,.5)}
   body.op-home .op-lib-empty{color:rgba(0,0,0,.5)}
+
+  /* quiet status: colored dot + muted label instead of loud filled pills */
+  body.op-home .op-row-h .pill{
+    background:transparent!important;padding:0 0 0 14px;font-weight:600;font-size:12px;
+    color:rgba(0,0,0,.55)!important;position:relative;border-radius:0;
+  }
+  body.op-home .op-row-h .pill::before{
+    content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);
+    width:7px;height:7px;border-radius:50%;background:currentColor;
+  }
+  body.op-home .op-row-h .pill.green{color:#1F8A4C!important}
+  body.op-home .op-row-h .pill.amber{color:#B26A00!important}
+  body.op-home .op-row-h .pill.blue{color:#0062B8!important}
+  body.op-home .op-row-h .pill.grey{color:rgba(0,0,0,.4)!important}
+  body.op-home .op-row-h .pill.dotp::before{background:currentColor}
+
+  /* accessible focus rings across the launch stage */
+  body.op-home .op-qbtn:focus-visible,
+  body.op-home .op-lib-tab:focus-visible,
+  body.op-home .op-row:focus-visible,
+  body.op-home .op-plus:focus-visible,
+  body.op-home .op-send:focus-visible{outline:2px solid #0062B8;outline-offset:2px}
 
   /* thinking hand-off card, on light */
   body.op-home .op-thinking{background:#fff;border-color:#D6D6D6;box-shadow:0 20px 50px rgba(0,30,78,.16)}
