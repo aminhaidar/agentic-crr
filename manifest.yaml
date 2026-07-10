@@ -1,0 +1,36 @@
+version: 1
+
+# Declares Agentic CRR as its own Wdesk microfrontend + navigation tab, modeled
+# on solution-enablement's corporate_regulatory_reporting_mfe. The
+# core.navigation_sidebar contribution is the "Agentic CRR" entry in the Wdesk
+# left nav; selecting it routes to /agentic-crr and opens the drawer experience,
+# which mounts this app's React root (see src/mfe/experience.tsx).
+microfrontends:
+  agentic_crr_mfe:
+    apps:
+      - wdesk
+    extensions:
+      agentic_crr_extension:
+        oauth2_scopes:
+          - connected-process|r
+          - connected-process|w
+          - dataentity|r
+          - dataentity|w
+        entrypoint: src/mfe/entrypoint.ts
+        contributions:
+          core.drawer_experiences:
+            - name: agentic_crr_drawer
+              details:
+                display_name: Agentic CRR
+          core.routing:
+            - name: agentic_crr_routing_contribution
+              details:
+                route_segment: agentic-crr
+                experience_name: agentic_crr_extension.core.drawer_experiences.agentic_crr_drawer
+          core.navigation_sidebar:
+            - name: agentic_crr_contribution
+              details:
+                icon: unify.flare
+                text: Agentic CRR
+                url: agentic-crr
+                location: default@410
