@@ -3,19 +3,37 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20"
+  },
   "description": "Agentic CRR — Regulatory Filing Operator. Standalone, fully-mocked React + TypeScript + shadcn prototype (no backend, no DB).",
   "scripts": {
     "dev": "vite",
+    "dev:mfe": "vite --config vite.mfe.config.ts --port 8080 --strictPort",
+    "build:mfe": "tsc --noEmit -p tsconfig.json && vite build --config vite.mfe.config.ts",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "check": "pnpm format:check && pnpm lint && pnpm test:run && pnpm build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "lint-staged": "lint-staged",
     "preview": "vite preview",
+    "prepare": "husky",
+    "test": "vitest",
+    "test:run": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@fontsource/roboto": "^5.2.10",
     "@radix-ui/react-dialog": "^1.1.2",
     "@radix-ui/react-dropdown-menu": "^2.1.2",
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-switch": "^1.1.1",
     "@radix-ui/react-tooltip": "^1.1.4",
+    "@tanstack/react-query": "^5.101.2",
+    "@workiva/drawer_experience_contribution": "1.0.121",
+    "@workiva/microfrontend": "2.9.41",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.42.2",
@@ -31,14 +49,29 @@
     ]
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "@workiva/vite-plugin-microfrontend": "2.9.54",
     "autoprefixer": "^10.4.20",
+    "eslint": "^10.6.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.7.0",
+    "husky": "^9.1.7",
+    "jsdom": "^29.1.1",
+    "lint-staged": "^17.0.8",
     "postcss": "^8.4.49",
+    "prettier": "^3.9.5",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
-    "vite": "^6.0.5"
+    "typescript-eslint": "^8.63.0",
+    "vite": "^6.0.5",
+    "vite-plugin-css-injected-by-js": "^5.0.1",
+    "vitest": "^4.1.10"
   }
 }

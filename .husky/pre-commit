@@ -1,0 +1,31 @@
+# Make pnpm/node resolvable when git runs the hook from a GUI or bare shell.
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+if [ -d "$HOME/.nvm/versions/node" ]; then
+  LATEST_NODE=$(ls -1 "$HOME/.nvm/versions/node" 2>/dev/null | tail -1)
+  [ -n "$LATEST_NODE" ] && export PATH="$HOME/.nvm/versions/node/$LATEST_NODE/bin:$PATH"
+fi
+[ -d "$HOME/.volta/bin" ] && export PATH="$HOME/.volta/bin:$PATH"
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# --- Git hygiene guard --------------------------------------------------------
+# Never commit directly to the integration branch — use a feature branch or an
+# isolated worktree so parallel agents (Claude/Cursor) don't clobber each other.
+branch="$(git symbolic-ref --short HEAD 2>/dev/null || echo '')"
+case "$branch" in
+  master | main)
+    echo "✖ Refusing to commit directly to '$branch'."
+    echo "  Start a branch:  git switch -c <type>/<short-name>"
+    exit 1
+    ;;
+esac
+
+# Warn (don't block) on accidental mega-commits — usual cause of messy trees.
+staged_count="$(git diff --cached --name-only | wc -l | tr -d ' ')"
+if [ "${staged_count:-0}" -gt 75 ]; then
+  echo "⚠ This commit stages $staged_count files — confirm it's ONE logical change."
+fi
+# -----------------------------------------------------------------------------
+
+# Format + lint ONLY the staged files (keeps the gate about your own changes).
+pnpm lint-staged

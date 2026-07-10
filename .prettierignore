@@ -1,0 +1,9 @@
+dist
+dist-mfe
+design
+.husky
+pnpm-lock.yaml
+src/data/docs_raw.json
+src/engine/legacy.ts
+src/shell.html
+src/styles/prototype.css
