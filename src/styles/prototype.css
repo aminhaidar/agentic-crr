@@ -1616,25 +1616,31 @@
 
   body.op-home .main{
     background:
-      radial-gradient(60% 46% at 50% 0%, rgba(0,117,219,.14) 0%, rgba(0,117,219,0) 60%),
-      linear-gradient(180deg,#F5F9FE 0%,#FBFCFE 40%,#FFFFFF 100%);
+      radial-gradient(50% 40% at 50% -2%, rgba(0,117,219,.16) 0%, rgba(0,117,219,0) 60%),
+      radial-gradient(46% 36% at 82% 8%, rgba(0,194,209,.10) 0%, rgba(0,194,209,0) 62%),
+      linear-gradient(180deg,#F4F9FF 0%,#FAFCFF 42%,#FFFFFF 100%);
   }
-  /* single soft blue halo drifting behind the hero — pure ambience */
+  /* faint technical grid — "engineered / agentic" texture, fades out toward edges */
   body.op-home .main::before{
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:0;opacity:.55;
+    background-image:
+      linear-gradient(rgba(0,44,82,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,44,82,.05) 1px, transparent 1px);
+    background-size:48px 48px;background-position:center top;
+    mask-image:radial-gradient(120% 75% at 50% 0%,#000 0%,rgba(0,0,0,.4) 45%,transparent 78%);
+    -webkit-mask-image:radial-gradient(120% 75% at 50% 0%,#000 0%,rgba(0,0,0,.4) 45%,transparent 78%);
+  }
+  /* soft dual-tone halo drifting behind the hero — pure ambience */
+  body.op-home .main::after{
     content:"";position:absolute;inset:0;pointer-events:none;z-index:0;opacity:.9;
-    background:radial-gradient(38% 30% at 50% 4%, rgba(0,117,219,.22), rgba(0,117,219,0) 72%);
+    background:
+      radial-gradient(34% 26% at 48% 3%, rgba(0,117,219,.24), rgba(0,117,219,0) 72%),
+      radial-gradient(28% 22% at 62% 8%, rgba(0,194,209,.16), rgba(0,194,209,0) 74%);
     animation:opAurora 16s ease-in-out infinite;
   }
-  /* whisper-fine dotted grain for depth (blue-tinted, not navy) */
-  body.op-home .main::after{
-    content:"";position:absolute;inset:0;pointer-events:none;z-index:0;opacity:.4;
-    background-image:radial-gradient(rgba(0,117,219,.05) .6px, transparent .6px);
-    background-size:32px 32px;mask-image:radial-gradient(110% 70% at 50% 0%,#000 0%,transparent 60%);
-    -webkit-mask-image:radial-gradient(110% 70% at 50% 0%,#000 0%,transparent 60%);
-  }
   @keyframes opAurora{
-    0%,100%{transform:translate3d(0,0,0) scale(1);opacity:.85}
-    50%{transform:translate3d(0,14px,0) scale(1.06);opacity:1}
+    0%,100%{transform:translate3d(0,0,0) scale(1);opacity:.82}
+    50%{transform:translate3d(0,12px,0) scale(1.05);opacity:1}
   }
   body.op-home .op-stage{position:relative;z-index:1}
 
@@ -1645,14 +1651,16 @@
     position:relative;
   }
   body.op-home .op-hero-mark::after{
-    content:"";position:absolute;inset:-14px;border-radius:22px;z-index:-1;
-    background:radial-gradient(closest-side, rgba(0,117,219,.28), rgba(0,117,219,0));
+    content:"";position:absolute;inset:-18px;border-radius:26px;z-index:-1;
+    background:
+      radial-gradient(closest-side, rgba(0,117,219,.30), rgba(0,117,219,0)),
+      radial-gradient(closest-side at 70% 70%, rgba(0,194,209,.22), rgba(0,194,209,0));
     animation:opBloom 3.4s ease-in-out infinite;
   }
   @keyframes opBloom{0%,100%{opacity:.5;transform:scale(.92)}50%{opacity:1;transform:scale(1.12)}}
 
-  body.op-home .op-greet{color:rgba(0,0,0,.87)}
-  body.op-home .op-sub{color:rgba(0,0,0,.64)}
+  body.op-home .op-greet{color:rgba(0,0,0,.88);font-size:34px;letter-spacing:-.025em;margin-top:24px}
+  body.op-home .op-sub{color:rgba(0,0,0,.6);max-width:520px}
 
   /* quick-start chips — light Unify cards */
   body.op-home .op-qbtn{
@@ -1670,10 +1678,18 @@
   body.op-home .op-qmore-item:hover{background:rgba(0,0,0,.04)}
   body.op-home .op-qmore-sub{color:rgba(0,0,0,.64)}
 
-  /* composer — the star: clean white card that glows Unify-blue on focus */
+  /* composer — the star: floating white card with a second card peeking behind */
+  body.op-home .op-composer{position:relative}
+  body.op-home .op-composer::before{
+    content:"";position:absolute;z-index:0;left:22px;right:22px;top:14px;bottom:-14px;
+    background:linear-gradient(180deg,rgba(255,255,255,.7),rgba(244,249,255,.55));
+    border:1px solid rgba(0,44,82,.06);border-radius:calc(var(--r-xl) + 4px);
+    box-shadow:0 20px 50px rgba(0,30,78,.10);
+  }
   body.op-home .op-composer-in{
+    position:relative;z-index:1;
     background:#fff;border:1.5px solid #D6D6D6;
-    box-shadow:0 12px 40px rgba(0,30,78,.10);
+    box-shadow:0 18px 48px rgba(0,30,78,.12),0 2px 6px rgba(0,30,78,.05);
   }
   body.op-home .op-composer-in textarea{color:rgba(0,0,0,.87)}
   body.op-home .op-composer-in textarea::placeholder{color:rgba(0,0,0,.4)}
