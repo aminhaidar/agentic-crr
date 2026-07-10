@@ -1615,27 +1615,43 @@
   body.op-home .sb-foot{border-top-color:#D6D6D6}
   body.op-home .slink-empty{color:rgba(0,0,0,.45)}
 
-  /* clean, calm canvas — near-white with soft aurora glow hugging the top edges */
+  /* clean canvas + a richer, prismatic aurora confined to the hero zone.
+     On-brand hues only: Workiva blue -> cyan/teal -> soft indigo lift. */
   body.op-home .main{
     background:
-      radial-gradient(46% 40% at 8% -6%, rgba(0,117,219,.16) 0%, rgba(0,117,219,0) 60%),
-      radial-gradient(44% 38% at 94% -4%, rgba(0,178,208,.14) 0%, rgba(0,178,208,0) 60%),
-      radial-gradient(60% 34% at 50% -10%, rgba(0,117,219,.08) 0%, rgba(0,117,219,0) 62%),
-      linear-gradient(180deg,#FAFBFD 0%,#FFFFFF 34%);
+      radial-gradient(42% 42% at 6% -8%, rgba(0,117,219,.22) 0%, rgba(0,117,219,0) 58%),
+      radial-gradient(40% 40% at 30% -10%, rgba(91,141,239,.16) 0%, rgba(91,141,239,0) 60%),
+      radial-gradient(46% 42% at 96% -6%, rgba(0,190,214,.20) 0%, rgba(0,190,214,0) 58%),
+      radial-gradient(64% 36% at 50% -12%, rgba(0,117,219,.10) 0%, rgba(0,117,219,0) 64%),
+      linear-gradient(180deg,#F9FBFE 0%,#FFFFFF 32%);
   }
-  /* whisper-soft drifting bloom so the top color feels alive, not static */
+  /* two slow, offset blooms cross-fading behind the hero — a living aurora */
   body.op-home .main::before{
-    content:"";position:absolute;top:0;left:0;right:0;height:420px;pointer-events:none;z-index:0;opacity:.85;
+    content:"";position:absolute;top:0;left:0;right:0;height:520px;pointer-events:none;z-index:0;opacity:.9;
     background:
-      radial-gradient(38% 70% at 12% 0%, rgba(0,117,219,.14), rgba(0,117,219,0) 70%),
-      radial-gradient(36% 66% at 90% 0%, rgba(0,178,208,.12), rgba(0,178,208,0) 72%);
-    animation:opAurora 16s ease-in-out infinite;
+      radial-gradient(34% 72% at 14% -4%, rgba(0,117,219,.20), rgba(0,117,219,0) 70%),
+      radial-gradient(30% 64% at 40% 2%, rgba(91,141,239,.16), rgba(91,141,239,0) 72%),
+      radial-gradient(34% 70% at 88% -2%, rgba(0,190,214,.18), rgba(0,190,214,0) 70%);
+    animation:opAurora 18s ease-in-out infinite;
+  }
+  body.op-home .main::after{
+    content:"";position:absolute;top:0;left:0;right:0;height:520px;pointer-events:none;z-index:0;opacity:.55;mix-blend-mode:multiply;
+    background:
+      radial-gradient(28% 60% at 26% -6%, rgba(0,190,214,.16), rgba(0,190,214,0) 72%),
+      radial-gradient(30% 64% at 74% -4%, rgba(91,141,239,.16), rgba(91,141,239,0) 72%);
+    animation:opAurora2 22s ease-in-out infinite;
   }
   @keyframes opAurora{
-    0%,100%{opacity:.75;transform:translate3d(0,0,0) scale(1)}
-    50%{opacity:1;transform:translate3d(0,8px,0) scale(1.05)}
+    0%,100%{opacity:.8;transform:translate3d(0,0,0) scale(1)}
+    50%{opacity:1;transform:translate3d(-14px,10px,0) scale(1.06)}
   }
-  @media (prefers-reduced-motion:reduce){ body.op-home .main::before{animation:none} }
+  @keyframes opAurora2{
+    0%,100%{opacity:.45;transform:translate3d(0,0,0) scale(1.04)}
+    50%{opacity:.7;transform:translate3d(18px,6px,0) scale(1)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    body.op-home .main::before,body.op-home .main::after{animation:none}
+  }
   body.op-home .op-stage{position:relative;z-index:1}
 
   /* hero mark — simple, confident brand tile */
@@ -1658,23 +1674,32 @@
   body.op-home .op-qmore-item:hover{background:#F5F8FC}
   body.op-home .op-qmore-sub{color:rgba(0,0,0,.6)}
 
-  /* composer — the single hero surface: one clean, softly elevated card */
+  /* composer — the hero surface. A soft aurora ring wraps a clean white card;
+     inspired by Lovable's subtle inset strokes + premium rounded feel. */
+  body.op-home .op-composer{position:relative}
+  body.op-home .op-composer::before{
+    content:"";position:absolute;inset:-1.5px;border-radius:22px;z-index:0;pointer-events:none;
+    background:linear-gradient(135deg,rgba(0,117,219,.55),rgba(0,190,214,.4) 45%,rgba(91,141,239,.5));
+    opacity:.35;filter:blur(.5px);
+    transition:opacity var(--dur-2) var(--ease);
+  }
+  body.op-home .op-composer:focus-within::before{opacity:.9}
   body.op-home .op-composer-in{
-    background:#fff;border:1px solid #E1E5EB;border-radius:16px;
-    box-shadow:0 4px 16px rgba(16,40,80,.06),0 1px 3px rgba(16,40,80,.04);
+    position:relative;z-index:1;
+    background:#fff;border:1px solid transparent;border-radius:20px;
+    box-shadow:0 10px 30px rgba(16,40,80,.08),0 2px 6px rgba(16,40,80,.05);
   }
   body.op-home .op-composer-in textarea{color:rgba(0,0,0,.87)}
   body.op-home .op-composer-in textarea::placeholder{color:rgba(0,0,0,.38)}
   body.op-home .op-composer-in:focus-within{
-    border-color:#0075DB;
-    box-shadow:0 0 0 3px rgba(0,117,219,.14),0 6px 20px rgba(16,40,80,.08);
+    box-shadow:0 0 0 4px rgba(0,117,219,.10),0 14px 36px rgba(16,40,80,.12);
   }
-  body.op-home .op-plus{background:#F7F8FA;border-color:#E4E7EC;color:rgba(0,0,0,.55)}
+  body.op-home .op-plus{background:#F5F7FA;border-color:#E4E7EC;color:rgba(0,0,0,.55);border-radius:12px}
   body.op-home .op-plus:hover{border-color:#0075DB;color:#0075DB;background:#fff}
-  body.op-home .op-ctl-ghost{color:rgba(0,0,0,.5)}
+  body.op-home .op-ctl-ghost{color:rgba(0,0,0,.5);border-radius:12px}
   body.op-home .op-ctl-ghost:hover{background:rgba(0,0,0,.05);color:rgba(0,0,0,.82)}
-  body.op-home .op-send{background:#0075DB;box-shadow:none}
-  body.op-home .op-send:hover{background:#0062B8}
+  body.op-home .op-send{background:linear-gradient(150deg,#0A87F0,#0062B8);border-radius:12px;box-shadow:0 4px 12px rgba(0,117,219,.32)}
+  body.op-home .op-send:hover{background:linear-gradient(150deg,#0075DB,#00539E)}
   body.op-home .op-send:focus-visible{outline:2px solid #0062B8;outline-offset:2px}
 
   /* library */
