@@ -1258,8 +1258,32 @@ let opLibTab='conversations';
 function renderOperator(){
   renderOpQuick();
   renderOpPrompts();
+  renderOpCockpit();
   renderOpLib(opLibTab);
   setTimeout(()=>moveOpLibInk(),20);
+}
+function renderOpCockpit(){
+  const el=document.getElementById('opCockpit'); if(!el) return;
+  const filings=sessions.filter(s=>s.kind==='filing' && !s.archived);
+  const needs=filings.filter(s=>s.status==='needs_you').length;
+  const waiting=filings.filter(s=>s.status==='waiting').length;
+  const active=filings.filter(s=>s.status!=='done').length;
+  const filed=filings.filter(s=>s.status==='done').length;
+  const ICN={
+    review:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.1V12a10 10 0 11-5.9-9.1"/><path d="M22 4L12 14.01l-3-3"/></svg>',
+    waiting:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    active:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>',
+    filed:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+  };
+  const card=(v,label,tone,icon,click)=>`<button class="op-ck ${tone}" onclick="${click}">
+    <span class="op-ck-ic">${icon}</span>
+    <span class="op-ck-body"><span class="op-ck-v">${v}</span><span class="op-ck-k">${label}</span></span>
+  </button>`;
+  el.innerHTML=
+    card(needs,'Need your review','accent',ICN.review,"opStarter('approve')")+
+    card(waiting,'Waiting on others','amber',ICN.waiting,"go('filings')")+
+    card(active,'In progress','blue',ICN.active,"go('filings')")+
+    card(filed,'Filed','green',ICN.filed,"go('filings')");
 }
 function renderHome(){ renderOperator(); } /* alias for legacy callers */
 const OP_QUICK=['be11','be577','be125'];

@@ -1709,6 +1709,36 @@
   body.op-home .op-prompt:hover{border-color:transparent;color:#0062B8;background:rgba(0,117,219,.07)}
   body.op-home .op-prompt:focus-visible{outline:2px solid #0062B8;outline-offset:2px}
 
+  /* cockpit — "at a glance" status strip, aligned to the 720px column */
+  body.op-home .op-cockpit{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:12px;
+    max-width:720px;margin:40px auto 0;
+    animation:rise .5s var(--ease-out) .2s both;
+  }
+  @media (max-width:640px){ body.op-home .op-cockpit{grid-template-columns:repeat(2,1fr)} }
+  body.op-home .op-ck{
+    display:flex;align-items:center;gap:12px;text-align:left;
+    padding:14px 16px;background:#fff;border:1px solid #E4E7EC;border-radius:14px;
+    cursor:pointer;transition:transform var(--dur-2) var(--ease),box-shadow var(--dur-2) var(--ease),border-color var(--dur-2) var(--ease);
+    box-shadow:0 1px 2px rgba(0,30,78,.04);
+  }
+  body.op-home .op-ck:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(0,30,78,.10);border-color:#D0D5DD}
+  body.op-home .op-ck:focus-visible{outline:2px solid #0062B8;outline-offset:2px}
+  body.op-home .op-ck-ic{
+    flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:10px;
+  }
+  body.op-home .op-ck-ic svg{width:20px;height:20px}
+  body.op-home .op-ck-body{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+  body.op-home .op-ck-v{font-size:22px;font-weight:700;color:rgba(0,0,0,.88);letter-spacing:-.02em}
+  body.op-home .op-ck-k{font-size:12.5px;font-weight:500;color:rgba(0,0,0,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* tones */
+  body.op-home .op-ck.accent .op-ck-ic{background:#E1EFFB;color:#0062B8}
+  body.op-home .op-ck.amber  .op-ck-ic{background:#FBEFD9;color:#B26A00}
+  body.op-home .op-ck.blue   .op-ck-ic{background:#E1EFFB;color:#0075DB}
+  body.op-home .op-ck.green  .op-ck-ic{background:#DFF1E6;color:#1F8A4C}
+  /* emphasize the one that needs action */
+  body.op-home .op-ck.accent{border-color:#BEDDF7;background:linear-gradient(180deg,#F5FAFF,#fff)}
+
   /* library */
   body.op-home .op-lib-tabs{border-bottom-color:#D6D6D6}
   body.op-home .op-lib-tab{color:rgba(0,0,0,.5)}
