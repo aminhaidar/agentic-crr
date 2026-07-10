@@ -1256,11 +1256,29 @@ function barClsForStatus(s){ if(s.waitingOn) return 'amber'; if(s.status==='need
 ================================================================*/
 let opLibTab='conversations';
 function renderOperator(){
+  renderOpBrief();
   renderOpQuick();
   renderOpPrompts();
   renderOpCockpit();
   renderOpLib(opLibTab);
   setTimeout(()=>moveOpLibInk(),20);
+}
+function renderOpBrief(){
+  const el=document.getElementById('opSub'); if(!el) return;
+  const filings=sessions.filter(s=>s.kind==='filing' && !s.archived);
+  const needs=filings.filter(s=>s.status==='needs_you').length;
+  const waiting=filings.filter(s=>s.status==='waiting').length;
+  const active=filings.filter(s=>s.status!=='done').length;
+  const b=(n)=>`<strong>${n}</strong>`;
+  if(!active){
+    el.innerHTML="What would you like to file today? Describe it, or pick a report type — the Operator's agents take it from there.";
+    return;
+  }
+  const parts=[];
+  if(needs)   parts.push(`${b(needs)} need${needs===1?'s':''} your review`);
+  if(waiting) parts.push(`${b(waiting)} waiting on others`);
+  const lead = parts.length ? parts.join(' · ') : `all on track`;
+  el.innerHTML=`Here's where things stand — ${lead}. The Operator is tracking ${b(active)} active report${active!==1?'s':''} for you.`;
 }
 function renderOpCockpit(){
   const el=document.getElementById('opCockpit'); if(!el) return;

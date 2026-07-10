@@ -1615,40 +1615,35 @@
   body.op-home .slink-empty{color:rgba(0,0,0,.45)}
 
   body.op-home .main{
-    background:linear-gradient(180deg,#F6FAFF 0%,#FCFDFF 30%,#FFFFFF 62%);
+    background:linear-gradient(180deg,#F7FAFE 0%,#FCFDFF 34%,#FFFFFF 66%);
   }
-  /* one soft, wide brand glow at the top — calm and premium, no texture */
-  body.op-home .main::before{
-    content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
-    background:radial-gradient(64% 42% at 50% -8%, rgba(0,117,219,.16) 0%, rgba(0,117,219,0) 66%);
-    animation:opAurora 18s ease-in-out infinite;
+  /* Workiva "amoeba" brand canvas — soft, dimensional organic shapes.
+     Signature to Workiva's visual language; kept low-opacity + blurred so it
+     reads as premium ambience behind the content, not loud decoration. */
+  body.op-home .op-canvas{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+  body.op-home .op-blob{position:absolute;left:50%;filter:blur(52px);will-change:transform;border-radius:50%}
+  body.op-home .op-blob.b1{
+    top:-150px;width:520px;height:440px;margin-left:-440px;opacity:.5;
+    background:radial-gradient(closest-side,#4DA3EA,#0075DB 68%,rgba(0,117,219,0));
+    border-radius:47% 53% 62% 38% / 42% 45% 55% 58%;
+    animation:opFloat1 22s ease-in-out infinite;
   }
-  @keyframes opAurora{
-    0%,100%{opacity:.85;transform:scale(1)}
-    50%{opacity:1;transform:scale(1.04)}
+  body.op-home .op-blob.b2{
+    top:-110px;width:440px;height:400px;margin-left:70px;opacity:.4;
+    background:radial-gradient(closest-side,#3FD0DA,#00A7C2 68%,rgba(0,167,194,0));
+    border-radius:58% 42% 38% 62% / 55% 52% 48% 45%;
+    animation:opFloat2 26s ease-in-out infinite;
   }
-  /* faint technical grid — "engineered / agentic" texture, fades out toward edges */
-  body.op-home .main::before{
-    content:"";position:absolute;inset:0;pointer-events:none;z-index:0;opacity:.55;
-    background-image:
-      linear-gradient(rgba(0,44,82,.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,44,82,.05) 1px, transparent 1px);
-    background-size:48px 48px;background-position:center top;
-    mask-image:radial-gradient(120% 75% at 50% 0%,#000 0%,rgba(0,0,0,.4) 45%,transparent 78%);
-    -webkit-mask-image:radial-gradient(120% 75% at 50% 0%,#000 0%,rgba(0,0,0,.4) 45%,transparent 78%);
+  body.op-home .op-blob.b3{
+    top:110px;width:400px;height:340px;margin-left:-150px;opacity:.28;
+    background:radial-gradient(closest-side,#8FC7F2,#0075DB 74%,rgba(0,117,219,0));
+    border-radius:52% 48% 55% 45% / 48% 60% 40% 52%;
+    animation:opFloat3 30s ease-in-out infinite;
   }
-  /* soft dual-tone halo drifting behind the hero — pure ambience */
-  body.op-home .main::after{
-    content:"";position:absolute;inset:0;pointer-events:none;z-index:0;opacity:.9;
-    background:
-      radial-gradient(34% 26% at 48% 3%, rgba(0,117,219,.24), rgba(0,117,219,0) 72%),
-      radial-gradient(28% 22% at 62% 8%, rgba(0,194,209,.16), rgba(0,194,209,0) 74%);
-    animation:opAurora 16s ease-in-out infinite;
-  }
-  @keyframes opAurora{
-    0%,100%{transform:translate3d(0,0,0) scale(1);opacity:.82}
-    50%{transform:translate3d(0,12px,0) scale(1.05);opacity:1}
-  }
+  @keyframes opFloat1{0%,100%{transform:translate3d(0,0,0) rotate(0) scale(1)}50%{transform:translate3d(-26px,22px,0) rotate(12deg) scale(1.06)}}
+  @keyframes opFloat2{0%,100%{transform:translate3d(0,0,0) rotate(0) scale(1)}50%{transform:translate3d(30px,18px,0) rotate(-14deg) scale(1.08)}}
+  @keyframes opFloat3{0%,100%{transform:translate3d(0,0,0) rotate(0) scale(1)}50%{transform:translate3d(14px,-20px,0) rotate(10deg) scale(1.05)}}
+  @media (prefers-reduced-motion:reduce){ body.op-home .op-blob{animation:none} }
   body.op-home .op-stage{position:relative;z-index:1}
 
   /* hero mark — glowing agentic core */
@@ -1667,7 +1662,8 @@
   @keyframes opBloom{0%,100%{opacity:.5;transform:scale(.92)}50%{opacity:1;transform:scale(1.12)}}
 
   body.op-home .op-greet{color:rgba(0,0,0,.88);font-size:34px;letter-spacing:-.025em;margin-top:24px}
-  body.op-home .op-sub{color:rgba(0,0,0,.6);max-width:520px}
+  body.op-home .op-sub{color:rgba(0,0,0,.62);max-width:560px}
+  body.op-home .op-sub strong{color:#0062B8;font-weight:700}
 
   /* quick-start chips — light Unify cards */
   body.op-home .op-qbtn{
