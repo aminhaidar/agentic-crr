@@ -1,0 +1,230 @@
+<!doctype html>
+<!--
+  v0 STARTER — Agentic CRR left navigation, shown in a mock Wdesk frame.
+
+  Purpose: paste this into v0.dev to redesign the APP NAV RAIL (the middle
+  column) so it feels native next to Wdesk's own nav (far-left column) and reads
+  on both the dark Operator home and the light inner views.
+
+  Suggested v0 prompt:
+    "This is a Workiva Wdesk app frame. The far-left dark rail is Wdesk's own
+     nav (fixed, don't change). The middle column is MY app's navigation — I
+     want you to redesign just that. Requirements:
+       - Feels like a natural extension of Wdesk's nav (match its navy).
+       - 'Operator' is the flagship AI surface — make it feel special without
+         being garish.
+       - A primary 'Start report' action.
+       - A clean collapse control that fully hides the rail (full-screen content).
+       - 'Settings' anchored to the bottom.
+       - Must read cleanly whether the content area is dark or light.
+     Give me a few polished directions. Use shadcn/Tailwind; I'll port to my own
+     component library after."
+
+  NOTE: styling here is plain CSS on purpose (framework-agnostic reference).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agentic CRR nav — v0 starter</title>
+    <style>
+      :root {
+        --wdesk-navy: #16233d; /* Wdesk's own left nav */
+        --app-navy: #1a2942; /* our app rail — tune this in v0 */
+        --accent: #4a8eff; /* Workiva blue */
+        --content-light: #f5f7fa;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family:
+          Roboto,
+          system-ui,
+          -apple-system,
+          sans-serif;
+        color: #fff;
+      }
+      .frame {
+        display: flex;
+        height: 100vh;
+      }
+
+      /* ---- Wdesk's own nav (fixed context — don't redesign) ---- */
+      .wdesk-nav {
+        width: 60px;
+        background: var(--wdesk-navy);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 14px 0;
+        flex: none;
+      }
+      .wdesk-nav .logo {
+        font-weight: 800;
+        font-size: 20px;
+        margin-bottom: 10px;
+      }
+      .wdesk-nav .ico {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        color: rgba(255, 255, 255, 0.65);
+      }
+      .wdesk-nav .ico.active {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+      }
+
+      /* ---- OUR app nav rail (redesign THIS) ---- */
+      .app-nav {
+        width: 236px;
+        background: var(--app-navy);
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        flex-direction: column;
+        padding: 14px;
+        gap: 4px;
+        flex: none;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .btn-primary {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 40px;
+        border: none;
+        border-radius: 10px;
+        background: var(--accent);
+        color: #fff;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .icon-btn {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        border: none;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.6);
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+      }
+      .icon-btn:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+      }
+      .nav {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        margin-top: 10px;
+      }
+      .item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 42px;
+        padding: 0 12px;
+        border-radius: 8px;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      .item:hover {
+        background: rgba(255, 255, 255, 0.07);
+        color: #fff;
+      }
+      .item.active {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+      }
+      /* Operator = flagship (make this feel special in v0) */
+      .item.operator {
+        background: rgba(74, 142, 255, 0.14);
+        color: #fff;
+        min-height: 44px;
+      }
+      .item.operator svg {
+        color: #7fb2ff;
+      }
+      .item.operator.active {
+        background: rgba(74, 142, 255, 0.26);
+      }
+      .spacer {
+        flex: 1;
+      }
+      .divider {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.09);
+        margin: 6px 0;
+      }
+
+      /* ---- content placeholder (toggle .dark to test both) ---- */
+      .content {
+        flex: 1;
+        background: var(--content-light);
+        color: #1a2233;
+        padding: 40px;
+      }
+      .content h1 {
+        margin: 0 0 6px;
+      }
+      .content.dark {
+        background: #0a0d13;
+        color: #eaf0fb;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="frame">
+      <!-- Wdesk's own nav — fixed context -->
+      <nav class="wdesk-nav">
+        <div class="logo">w</div>
+        <div class="ico">⌂</div>
+        <div class="ico">🗂</div>
+        <div class="ico active">✦</div>
+        <div class="ico">▦</div>
+      </nav>
+
+      <!-- OUR app nav — redesign this -->
+      <aside class="app-nav">
+        <div class="row">
+          <button class="btn-primary">＋ Start report</button>
+          <button class="icon-btn" title="Collapse">▤</button>
+        </div>
+        <div class="nav">
+          <div class="item operator active">✦ Operator</div>
+          <div class="item">▦ Portfolio</div>
+          <div class="item">🗂 Projects</div>
+          <div class="item">⛁ Sources</div>
+        </div>
+        <div class="spacer"></div>
+        <div class="divider"></div>
+        <div class="item">⚙ Settings</div>
+      </aside>
+
+      <!-- content — add class="dark" to test the dark home -->
+      <main class="content">
+        <h1>Portfolio</h1>
+        <p>
+          A live overview of everything in flight. (Toggle the content between
+          light and dark to make sure the nav rail reads on both.)
+        </p>
+      </main>
+    </div>
+  </body>
+</html>
