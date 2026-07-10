@@ -33,6 +33,50 @@ body.op-embedded .sb-top {
   display: none;
 }
 
+/* When the React/Unify nav has mounted, hide the prototype's original sidebar
+   markup (kept in the DOM for the engine) and let the portal fill the rail. */
+#opNavMount {
+  display: none;
+}
+body.op-nav-react #opNavMount {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+body.op-nav-react .sidebar > :not(#opNavMount) {
+  display: none;
+}
+/* A consistent Workiva-navy rail (matches Wdesk's own nav) so it reads on every
+   view and blends with the frame instead of a heavy near-black block. */
+body.op-nav-react .sidebar {
+  background: #1a2942;
+  border-right-color: rgba(255, 255, 255, 0.08);
+}
+/* Collapse fully hides the rail for a full-screen content feel. */
+body.op-nav-react.collapsed .sidebar {
+  width: 0;
+  border-right-width: 0;
+}
+/* The in-rail Unify toggle collapses; this floating one shows only while
+   collapsed, to reopen the rail. It's themed to read on the content behind it
+   (dark on the Operator home, light on inner views). */
+body.op-nav-react .workspace-nav-toggle {
+  display: none;
+}
+body.op-nav-react.collapsed .workspace-nav-toggle {
+  display: grid;
+  left: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+}
+body.op-home.op-nav-react.collapsed .workspace-nav-toggle {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.85);
+}
+
 /* Radix-positioned popovers own their own placement — neutralize the
    prototype's fixed positioning so shadcn menus float from their trigger. */
 .smenu-radix {

@@ -43,6 +43,8 @@ declare global {
     __opThemeTransition?: (opts: { toDark: boolean; run: () => void }) => void;
     // Set by the Wdesk microfrontend entry so the shell can slim redundant chrome.
     __OP_EMBEDDED?: boolean;
+    // Fires the active nav key on every view change, so the React/Unify nav can highlight it.
+    __opViewChanged?: (nav: string) => void;
     // Read-only fixture data exposed by the engine.
     __OP_DATA?: {
       OB_TYPES: Record<string, unknown>;

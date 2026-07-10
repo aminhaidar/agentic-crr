@@ -25,7 +25,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
     "@fontsource/roboto": "^5.2.10",
+    "@mui/material": "5.18.0",
+    "@mui/system": "5.18.0",
     "@radix-ui/react-dialog": "^1.1.2",
     "@radix-ui/react-dropdown-menu": "^2.1.2",
     "@radix-ui/react-slot": "^1.1.0",
@@ -34,6 +38,7 @@
     "@tanstack/react-query": "^5.101.2",
     "@workiva/drawer_experience_contribution": "1.0.121",
     "@workiva/microfrontend": "2.9.41",
+    "@workiva/unify": "^1.313.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.42.2",

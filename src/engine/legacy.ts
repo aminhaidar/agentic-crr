@@ -385,6 +385,7 @@ function go(view){
   targetView.classList.add('active');
   const navHi=navFor[view]!==undefined?navFor[view]:view;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.nav===navHi));
+  try{ window.__opViewChanged?.(navHi); }catch(e){ /* no subscriber */ }
   const sub=!globalViews.includes(view);
   const homeCrumb=document.querySelector('.crumbs .c-home');
   if(view==='report'){
@@ -5237,9 +5238,9 @@ export function initLegacy(){
   _legacyStarted = true;
 document.body.classList.add('op-home');
 if(window.__OP_EMBEDDED) document.body.classList.add('op-embedded');
-// Collapse the app's own nav by default on mobile, and when embedded in the
-// Wdesk frame (which already provides top-level navigation).
-if(window.__OP_EMBEDDED || window.matchMedia?.('(max-width: 760px)').matches){
+// The Unify nav rail is always visible (no collapse toggle); only the small
+// mobile viewport still starts collapsed.
+if(window.matchMedia?.('(max-width: 760px)').matches){
   document.body.classList.add('collapsed');
   const navToggle=document.getElementById('workspaceNavToggle');
   navToggle?.setAttribute('aria-expanded','false');
