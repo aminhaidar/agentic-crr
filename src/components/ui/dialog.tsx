@@ -17,7 +17,9 @@ const DialogDescription = DialogPrimitive.Description;
  */
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { modalClassName?: string }
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    modalClassName?: string;
+  }
 >(({ className, children, modalClassName, ...props }, ref) => (
   <DialogPortal>
     <DialogPrimitive.Overlay className={cn("overlay open", className)}>

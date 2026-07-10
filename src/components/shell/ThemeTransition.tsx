@@ -64,7 +64,10 @@ export function ThemeTransition() {
         try {
           // Fade the veil in just enough to mask the swap.
           await withTimeout(
-            controls.start({ opacity: 1, transition: { duration: COVER_MS, ease: EASE } }),
+            controls.start({
+              opacity: 1,
+              transition: { duration: COVER_MS, ease: EASE },
+            }),
             COVER_MS * 1000 + 250,
           );
           // Covered — swap the view + theme class behind the veil.
@@ -75,7 +78,10 @@ export function ThemeTransition() {
           );
           // Fade the veil back out over the freshly themed page.
           await withTimeout(
-            controls.start({ opacity: 0, transition: { duration: REVEAL_MS, ease: EASE } }),
+            controls.start({
+              opacity: 0,
+              transition: { duration: REVEAL_MS, ease: EASE },
+            }),
             REVEAL_MS * 1000 + 300,
           );
         } catch {
@@ -96,7 +102,7 @@ export function ThemeTransition() {
 
   // Solid destination-theme base color — no gradients, so the crossfade stays
   // quiet and the eye isn't drawn to the veil itself.
-  const background = toDark ? "#0a1122" : "#f4f5f8";
+  const background = toDark ? "var(--op-dark-canvas)" : "var(--op-bg)";
 
   return (
     <motion.div

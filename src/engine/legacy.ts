@@ -6,11 +6,30 @@
  * view content into React-owned container nodes and is driven by handlers
  * exposed on window (called by inline onclick attributes in generated markup).
  */
-import mermaid from "mermaid";
 import DOCS_RAW_JSON from "../data/docs_raw.json";
+import { detectReportType, escapeHtml } from "../domain/text";
+import { AGENT_ACTIVITY_DURATION_MS } from "../domain/workflowActivity";
+import { REPORT_TYPES } from "../fixtures/reportTypes";
+import { InMemoryReportRepository } from "../infrastructure/reports/InMemoryReportRepository";
+import { workflowRepository } from "../infrastructure/workflow/workflowRepository";
 
 
 const DOCS_RAW = (DOCS_RAW_JSON);
+type Mermaid = (typeof import("mermaid"))["default"];
+let mermaidPromise: Promise<Mermaid> | undefined;
+
+function loadMermaid() {
+  mermaidPromise ??= import("mermaid").then(({ default: mermaid }) => {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: "neutral",
+      securityLevel: "strict",
+      fontFamily: 'Roboto, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif',
+    });
+    return mermaid;
+  });
+  return mermaidPromise;
+}
 
 /* ---- next script block ---- */
 
@@ -248,20 +267,12 @@ const FORMS={
     {id:'be125-meridian',entity:'Meridian Trading Pte',code:'BE-125',status:'done'},
   ]},
 };
-/* Report types offered when creating a new report — each says how it fans out into forms. */
-const REPORT_TYPES=[
-  {code:'BE-11',name:'Annual Survey of U.S. Direct Investment Abroad',sub:'Direct Investment Abroad · BEA',unit:'affiliate',formCode:'BE-11B',formNote:'One BE-11 form per foreign affiliate in scope.'},
-  {code:'BE-577',name:'Quarterly Survey of Transactions',sub:'Quarterly Transactions · BEA',unit:'affiliate',formCode:'BE-577',formNote:'One form per affiliate with reportable transactions.'},
-  {code:'BE-125',name:'Quarterly Survey of Services & IP Transactions',sub:'Services & IP Transactions · BEA',unit:'affiliate',formCode:'BE-125',formNote:'One form per affiliate with services/IP transactions.'},
-  {code:'CbCR',name:'Country-by-Country Report (Form 8975)',sub:'Form 8975 · IRS/OECD',unit:'tax jurisdiction',formCode:'8975 · Sch A',formNote:'One schedule per tax jurisdiction where the group operates.'},
-  {code:'SF-425',name:'Federal Financial Report',sub:'Federal Financial Report · GSA',unit:'federal award',formCode:'SF-425',formNote:'One form per federal award.'},
-];
 /* ---------- navigation (no dead ends) ---------- */
 const titles={home:'Operator',dashboard:'Portfolio',filings:'Projects',agents:'Agents & Skills',artifacts:'Artifacts',sources:'Sources',schedules:'Schedules',settings:'Settings',docs:'Product Docs',session:'Session',filing:'Report',form:'Form',onboard:'Start a report',setup:'Start a project',report:'Project'};
 const globalViews=['home','dashboard','filings','artifacts','sources','schedules','settings','docs'];
 const navFor={filing:'filings',form:'filings',agents:'settings',session:'',onboard:'home',setup:'filings',report:'filings'};
 const backTargets={filing:'filings',form:'filings',agents:'settings',onboard:'home',setup:'filings',report:'filings'};
-let currentSessionId=null, docsInit=false;
+let currentSessionId=null, activeWorkflowId=null, docsInit=false;
 /* Track the deep-link context that isn't otherwise stored on module state, so the
    URL can be reconstructed for the Project dashboard and individual Form pages. */
 let currentFilingId=null, currentFormReportId=null, currentFormId=null;
@@ -351,6 +362,11 @@ function applyRoute(){
    transition re-enter go() to perform the real navigation while fully covered. */
 let __opTransitioning=false;
 function go(view){
+  const targetView=document.getElementById('view-'+view);
+  if(!targetView){
+    if(view!=='home') go('home');
+    return;
+  }
   if(!__opTransitioning){
     const bridge=(window as any).__opThemeTransition;
     const reduce=window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -366,7 +382,7 @@ function go(view){
     }
   }
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-  document.getElementById('view-'+view).classList.add('active');
+  targetView.classList.add('active');
   const navHi=navFor[view]!==undefined?navFor[view]:view;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.nav===navHi));
   const sub=!globalViews.includes(view);
@@ -390,6 +406,9 @@ function go(view){
   document.body.classList.toggle('op-home', view==='home');
   document.body.classList.toggle('in-report', view==='report');
   document.body.classList.toggle('in-setup', view==='setup');
+  if(view!=='home'){
+    window.__exitConversationalProject?.();
+  }
   if(view!=='report' && view!=='setup') closeFab();
   if(view==='home') renderOperator();
   if(view==='dashboard') renderDashboard();
@@ -400,6 +419,13 @@ function go(view){
 }
 function openSessionById(id){
   const s=sessions.find(x=>x.id===id); if(!s) return;
+  const conversationBridge=(window as any).__startConversationalProject;
+  const reportType=projectReportType(s);
+  if(s.kind==='filing' && reportType==='be11' && conversationBridge){
+    currentSessionId=id;
+    conversationBridge({type:'be11',resume:true,sessionId:id});
+    return;
+  }
   // The Operator owns every chat, but a chat started from a project's AI chat FAB
   // belongs to that project — open the project rather than the standalone Operator chat.
   if(s.kind==='chat' && s.project && sessions.find(x=>x.id===s.project)){
@@ -454,14 +480,22 @@ function toggleStartMenu(e){
   const menu=document.getElementById('startMenu'); if(!menu) return;
   const willOpen=!menu.classList.contains('open');
   menu.classList.toggle('open');
+  document.querySelector('.startbtn')?.setAttribute('aria-expanded',String(willOpen));
   if(willOpen) positionStartMenu();
 }
-function closeStartMenu(){ document.getElementById('startMenu')?.classList.remove('open'); }
+function closeStartMenu(){ document.getElementById('startMenu')?.classList.remove('open'); document.querySelector('.startbtn')?.setAttribute('aria-expanded','false'); }
 function pickStart(type){ closeStartMenu(); openReport(type); }
 /* "Start Project" CTA (My Projects header) — launches the full-screen project
    start wizard for the BE-11 lifecycle. */
 function startProject(){ closeStartMenu(); closeModal(); openReport('be11'); }
-document.addEventListener('click',(e)=>{ if(!e.target.closest('.startwrap') && !e.target.closest('#startMenu')) closeStartMenu(); });
+function handleDocumentClick(e){
+  const target=e.target;
+  if(!(target instanceof Element)) return;
+  if(!target.closest('.startwrap') && !target.closest('#startMenu')) closeStartMenu();
+  if(!target.closest('.slink')) closeAllSessionMenus();
+  if(!target.closest('.notif-wrap')){ document.getElementById('notifPanel')?.classList.remove('open'); document.querySelector('.bell-btn')?.setAttribute('aria-expanded','false'); }
+  if(!target.closest('#opQMore')) closeOpMore();
+}
 
 /* ---------- sidebar: sessions (pin / delete / timestamps) ---------- */
 let pendingDelete=null;
@@ -477,7 +511,7 @@ function sessionRow(s){
   const activeCls=s.id===currentSessionId?' active':'';
   return `<div class="slink${activeCls}" data-id="${s.id}" onclick="openSessionById('${s.id}')">
     ${sessionIndicator(s)}
-    <div class="slink-name"><span class="stxt">${s.title}</span>${unread?'<span class="udot"></span>':''}</div>
+    <div class="slink-name"><span class="stxt">${escapeHtml(s.title)}</span>${unread?'<span class="udot"></span>':''}</div>
     <div class="slink-meta">
       <span class="slink-time">${s.updated}</span>
       <button class="skebab" onclick="event.stopPropagation();toggleSessionMenu('${s.id}')" title="More">⋯</button>
@@ -495,7 +529,17 @@ function renderSidebarSessions(){
   document.getElementById('pinnedList').innerHTML=sorted.filter(s=>s.pinned).map(sessionRow).join('') || '<div class="slink-empty">No pinned sessions</div>';
   document.getElementById('allList').innerHTML=sorted.filter(s=>!s.pinned).map(sessionRow).join('') || '<div class="slink-empty">No unpinned sessions</div>';
 }
-function togglePin(id){ const s=sessions.find(x=>x.id===id); if(s){ s.pinned=!s.pinned; closeAllSessionMenus(); renderSidebarSessions(); } }
+async function togglePin(id){
+  const s=sessions.find(x=>x.id===id); if(!s) return;
+  try{
+    if(s.kind==='filing') await reportRepository.setPinned(id,!s.pinned);
+    else s.pinned=!s.pinned;
+  }catch(error){
+    showToast(error instanceof Error?error.message:'Unable to update the report');
+    return;
+  }
+  closeAllSessionMenus(); renderSidebarSessions();
+}
 function toggleSessionMenu(id){
   const menu=document.getElementById('menu-'+id); const wasOpen=menu.classList.contains('open');
   closeAllSessionMenus();
@@ -517,49 +561,60 @@ function closeAllSessionMenus(){
   document.querySelectorAll('.smenu-item.danger.confirm').forEach(el=>{el.textContent='Delete';el.classList.remove('confirm');});
   pendingDelete=null;
 }
-function deleteSession(id){
+async function deleteSession(id){
   if(pendingDelete!==id){
     pendingDelete=id;
     const el=document.querySelector(`#menu-${id} .smenu-item.danger`);
     if(el){ el.textContent='Confirm delete'; el.classList.add('confirm'); }
     return;
   }
-  sessions=sessions.filter(s=>s.id!==id);
+  const session=sessions.find(s=>s.id===id);
+  try{
+    if(session?.kind==='filing') await reportRepository.delete(id);
+    else{
+      const index=sessions.findIndex(s=>s.id===id);
+      if(index>=0) sessions.splice(index,1);
+    }
+  }catch(error){
+    showToast(error instanceof Error?error.message:'Unable to delete the report');
+    return;
+  }
   pendingDelete=null;
   renderSidebarSessions(); renderHome();
   if(currentSessionId===id){ currentSessionId=null; go('home'); }
   showToast('Session deleted');
 }
-document.addEventListener('click',(e)=>{
-  if(!e.target.closest('.slink')) closeAllSessionMenus();
-  if(!e.target.closest('.notif-wrap')) document.getElementById('notifPanel')?.classList.remove('open');
-});
-
 /* ---------- notifications ---------- */
 function renderNotif(){
   const unread=notifications.filter(n=>!n.read).length;
   const badge=document.getElementById('notifBadge');
+  if(!badge) return;
   badge.style.display=unread?'flex':'none'; badge.textContent=unread;
   const panel=document.getElementById('notifPanel');
+  if(!panel) return;
   panel.innerHTML=`<div class="notif-h">Notifications <button onclick="markAllRead(event)">Mark all read</button></div><div class="notif-list">`+
     (notifications.length? notifications.slice().reverse().map(n=>`
       <div class="notif-item ${n.read?'read':''}" onclick="notifClick(${n.id})"><span class="nd"></span>
-      <div><div class="nt">${n.text}</div><div class="ntime">${n.time}</div></div></div>`).join('')
+      <div><div class="nt">${escapeHtml(n.text)}</div><div class="ntime">${escapeHtml(n.time)}</div></div></div>`).join('')
       : `<div class="notif-empty">You're all caught up.</div>`)+`</div>`;
 }
-function toggleNotif(e){ e.stopPropagation(); const p=document.getElementById('notifPanel'); const willOpen=!p.classList.contains('open'); closeAllSessionMenus(); p.classList.toggle('open'); if(willOpen) renderNotif(); }
+function toggleNotif(e){ e.stopPropagation(); const p=document.getElementById('notifPanel'); if(!p) return; const willOpen=!p.classList.contains('open'); closeAllSessionMenus(); p.classList.toggle('open'); document.querySelector('.bell-btn')?.setAttribute('aria-expanded',String(willOpen)); if(willOpen) renderNotif(); }
 function markAllRead(e){ e.stopPropagation(); notifications.forEach(n=>n.read=true); renderNotif(); renderSidebarSessions(); }
 function notifClick(id){
   const n=notifications.find(x=>x.id===id); if(!n) return;
-  n.read=true; document.getElementById('notifPanel').classList.remove('open'); renderNotif();
+  n.read=true; document.getElementById('notifPanel')?.classList.remove('open'); renderNotif();
+  document.querySelector('.bell-btn')?.setAttribute('aria-expanded','false');
   if(n.sessionId) openSessionById(n.sessionId);
 }
 
 /* ---------- toast ---------- */
 function showToast(msg){
   const wrap=document.getElementById('toastWrap');
+  if(!wrap) return;
   const t=document.createElement('div'); t.className='toast';
-  t.innerHTML=`<span class="toast-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span><span>${msg}</span>`;
+  t.innerHTML=`<span class="toast-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>`;
+  const text=document.createElement('span'); text.textContent=String(msg);
+  t.appendChild(text);
   wrap.appendChild(t);
   requestAnimationFrame(()=>t.classList.add('show'));
   setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),250); },2200);
@@ -600,7 +655,7 @@ function filingCard(s){
   const statusHtml=s.waitingOn?`<span class="pill amber dotp">Waiting on ${PEOPLE[s.waitingOn.who].name.split(' ')[0]}</span>`:`<span class="pill ${(STATUS_META[s.status]||{cls:'green'}).cls} dotp">${(STATUS_META[s.status]||{label:'Active'}).label}</span>`;
   return `<div class="filing" onclick="openProject('${s.id}')">
     <div class="fmark">${s.code}</div>
-    <div class="fbody"><div class="fname">${s.title}</div><div class="fmeta">${s.sub} · ${filingPhaseLabel(s)}</div><div class="bar ${barCls}"><i style="width:${s.pct||0}%"></i></div></div>
+    <div class="fbody"><div class="fname">${escapeHtml(s.title)}</div><div class="fmeta">${escapeHtml(s.sub)} · ${filingPhaseLabel(s)}</div><div class="bar ${barCls}"><i style="width:${s.pct||0}%"></i></div></div>
     <div style="text-align:right;min-width:120px">${statusHtml}<div class="presence" style="justify-content:flex-end;margin-top:8px">${s.people.map(av).join('')}</div></div>
     <div class="chev">${IC.chev}</div>
   </div>`;
@@ -620,7 +675,6 @@ function renderFilings(){
     filingGroup('In progress',inProgress)+filingGroup('Completed',completed)+filingGroup('Archived',archived);
 }
 /* ---------- Create a new report ---------- */
-let reportSeq=0;
 function newReportFormNote(){
   const t=REPORT_TYPES[document.getElementById('nrType').value];
   document.getElementById('nrNote').innerHTML=`<strong>${t.code}</strong> — ${t.name}. ${t.formNote} Once you confirm scope, the Operator generates one <strong>${t.formCode}</strong> form per ${t.unit} and carries each through the lifecycle.`;
@@ -643,28 +697,42 @@ function openNewReportModal(){
   document.getElementById('overlay').classList.add('open');
   newReportFormNote();
 }
-function createReport(){
-  const t=REPORT_TYPES[document.getElementById('nrType').value];
-  const name=(document.getElementById('nrName').value||'').trim()||`${t.code} report`;
-  const startDate=document.getElementById('nrStart').value||null;
-  const dueDate=document.getElementById('nrDue').value||null;
-  const dataDueDate=document.getElementById('nrDataDue').value||null;
-  let base=name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')||t.code.toLowerCase();
-  let id=base; while(sessions.some(s=>s.id===id)) id=base+'-'+Date.now();
-  const dl=dueDate?new Date(dueDate+'T00:00:00'):null;
-  const s={
-    id,code:t.code,title:name,sub:t.sub,kind:'filing',engine:'history',
-    pinned:false,status:'active',pct:0,people:['dr'],updated:'just now',updatedSort:--reportSeq,waitingOn:null,stagePhase:0,
-    startDate,dueDate,dataDueDate,
-    forms:{unit:t.unit,total:0,items:[]},
-    history:[{kind:'op',lvl:'recommend',html:`<p><strong>${name}</strong> report created. I'll start at the front door — reading your entity data and prior filings to work out scope, then generate one <strong>${t.formCode}</strong> form per ${t.unit} in scope.</p>`}],
-  };
-  sessions.unshift(s);
-  FILING_DASH[id]={agents:[{n:'Obligation Scout',out:'Queued — assessing scope from entity data',status:'q',art:null}],pending:[],attention:[]};
-  if(dl){ UPCOMING.push({id,label:name,date:{y:dl.getFullYear(),m:dl.getMonth(),d:dl.getDate()},dateLabel:dl.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}),note:'0% ready · just created',sev:'grey'}); }
+function presentCreatedReport(report){
   closeModal(); renderFilings(); renderSidebarSessions(); renderHome();
-  openFiling(id);
-  showToast(`${name} created`);
+  const createdSession=sessions.find(s=>s.id===report.id);
+  const conversationBridge=(window as any).__startConversationalProject;
+  if(projectReportType(createdSession)==='be11' && conversationBridge){
+    currentSessionId=report.id;
+    conversationBridge({type:'be11',resume:false,sessionId:report.id});
+  } else {
+    openFiling(report.id);
+  }
+  showToast(`${report.title} created`);
+}
+async function createReport(values){
+  let formValues=values;
+  if(!formValues){
+    const typeInput=document.getElementById('nrType');
+    const nameInput=document.getElementById('nrName');
+    if(!typeInput || !nameInput){ showToast('Unable to create the report. Please reopen the dialog.'); return false; }
+    const reportType=REPORT_TYPES[Number(typeInput.value)];
+    formValues={
+      name:nameInput.value||'',
+      reportTypeCode:reportType?.code||'',
+      startDate:document.getElementById('nrStart')?.value||null,
+      dueDate:document.getElementById('nrDue')?.value||null,
+      dataCollectionDueDate:document.getElementById('nrDataDue')?.value||null,
+    };
+  }
+  let report;
+  try{
+    report=await reportRepository.create(formValues);
+  }catch(error){
+    showToast(error instanceof Error?error.message:'Unable to create the report');
+    return false;
+  }
+  presentCreatedReport(report);
+  return true;
 }
 /* Full scope roster — a report's authored forms plus the rest of the entities in
    scope, generated deterministically so the whole set (e.g. 42 affiliates) can be
@@ -807,8 +875,48 @@ function projectReportType(s){
 function openProject(id){
   const s=sessions.find(x=>x.id===id); if(!s) return;
   const t=projectReportType(s);
-  if(t && OB_TYPES[t]) openReport(t, null, {resume:true});
+  if(t && OB_TYPES[t]){ currentSessionId=id; openReport(t, null, {resume:true}); }
   else openFilingDashboard(id);
+}
+function openManualProject(id){
+  const s=sessions.find(x=>x.id===id); if(!s) return;
+  const t=projectReportType(s);
+  activeWorkflowId=id;
+  if(t && OB_TYPES[t]){ currentSessionId=id; openReport(t, null, {resume:true,manual:true}); }
+  else openFilingDashboard(id);
+}
+function syncWorkflowStage(stage){
+  if(!activeWorkflowId) return;
+  void workflowRepository.setStage(activeWorkflowId,stage,'manual').catch(error=>{
+    console.error('Unable to synchronize workflow stage.',error);
+  });
+}
+function openManualReport(type,tab='setup',workflowId=null,workflowStage=null){
+  activeWorkflowId=workflowId;
+  if(tab==='setup'){ openReport(type,null,{manual:true}); return; }
+  openReport(type,null,{manual:true,resume:true});
+  if(!RPT) return;
+  const order=['overview','scoping','mapping','review','file','activity'];
+  const target=order.includes(tab)?tab:'overview';
+  const rank=order.indexOf(target);
+  if(rank>=2){
+    RPT.scopeRun=true; RPT.scopeApproved=true; RPT.scopeDone=true;
+    RPT.unlocked.mapping=true;
+  }
+  if(rank>=3){
+    RPT.connected=true; RPT.pullDone=true; RPT.mapRun=true; RPT.mapDone=true;
+    RPT.valRun=true; RPT.valApproved=true; RPT.valDone=true;
+    RPT.unlocked.review=true;
+  }
+  if(['approval','filing','complete'].includes(workflowStage)){
+    reviewForms().forEach(form=>{ RPT.reviewed[form.entity.name]=true; });
+  }
+  if(rank>=4){
+    RPT.reviewDone=true; RPT.finalApproved=true;
+    RPT.unlocked.file=true;
+  }
+  RPT.tab=target;
+  renderReport();
 }
 /* The project (report) view is the single unit of work. Every list/link routes
    through openProject; openFiling is kept as an alias so any remaining call sites
@@ -886,7 +994,7 @@ function openFilingDashboard(id){
   document.getElementById('filingDash').innerHTML=`
     <div class="fd-head">
       <div class="fd-mark">${s.code}</div>
-      <div class="fd-title-wrap"><div class="fd-title">${s.title}</div><div class="fd-sub">${s.sub}${s.archived?' · Archived':''}</div></div>
+      <div class="fd-title-wrap"><div class="fd-title">${escapeHtml(s.title)}</div><div class="fd-sub">${escapeHtml(s.sub)}${s.archived?' · Archived':''}</div></div>
       <div class="fd-actions">${statusHtml}<button class="btn primary" onclick="openSessionById('${s.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M4 5h16v11H8l-4 4z"/></svg>Open in Operator</button></div>
     </div>
     <div class="fd-strip">
@@ -1239,12 +1347,27 @@ function barClsForStatus(s){ if(s.waitingOn) return 'amber'; if(s.status==='need
 ================================================================*/
 let opLibTab='conversations';
 function renderOperator(){
+  const hour=new Date().getHours();
+  const greeting=hour<12?'Good morning':hour<18?'Good afternoon':'Good evening';
+  const greetingEl=document.getElementById('opGreet');
+  if(greetingEl) greetingEl.textContent=`${greeting}, Julie`;
   renderOpQuick();
   renderOpPrompts();
   renderOpLib(opLibTab);
   setTimeout(()=>moveOpLibInk(),20);
 }
 function renderHome(){ renderOperator(); } /* alias for legacy callers */
+function toggleWorkspaceNav(){
+  const collapsed=document.body.classList.toggle('collapsed');
+  closeStartMenu();
+  const toggle=document.getElementById('workspaceNavToggle');
+  if(toggle){
+    const label=collapsed?'Show navigation':'Hide navigation';
+    toggle.setAttribute('aria-label',label);
+    toggle.setAttribute('title',label);
+    toggle.setAttribute('aria-expanded',String(!collapsed));
+  }
+}
 /* Portfolio view — the live overview (stats, work queue, deadlines, agent
    activity) as its own destination, distinct from the Projects report list. */
 function renderDashboard(){ const el=document.getElementById('dashWrap'); if(el) el.innerHTML=portfolioSummaryHtml(); }
@@ -1266,7 +1389,6 @@ function renderOpQuick(){
 function toggleOpMore(e){ if(e) e.stopPropagation(); document.getElementById('opQMore')?.classList.toggle('open'); }
 function closeOpMore(){ document.getElementById('opQMore')?.classList.remove('open'); }
 function pickOther(key){ closeOpMore(); openReport(key); }
-document.addEventListener('click',(e)=>{ if(!e.target.closest('#opQMore')) closeOpMore(); });
 function renderOpPrompts(){
   const el=document.getElementById('opPrompts'); if(!el) return;
   const keys=['file','approve','duesoon','cmpreports'];
@@ -1284,12 +1406,6 @@ function goToNewSessionWithMessage(text,key){
   currentSessionId=null; go('session'); startClean(); renderSidebarSessions();
   userSay(text); clearSuggests(); cleanReply(key);
 }
-function detectReportType(t){
-  const s=(t||'').toLowerCase();
-  if(/be[\s-]?577|\b577\b|quarterly transaction/.test(s)) return 'be577';
-  if(/be[\s-]?11|\bbe11\b|direct investment/.test(s)) return 'be11';
-  return null;
-}
 function opSend(){
   const inp=document.getElementById('opInput'); const txt=(inp.value||'').trim(); if(!txt) return;
   inp.value=''; opAutoGrow(inp);
@@ -1302,9 +1418,10 @@ function opSend(){
 let pendingSeed=null;
 function operatorLaunch(txt,type){
   const comp=document.getElementById('opComposer');
+  if(!comp || !OB_TYPES[type]) return;
   document.querySelectorAll('.op-thinking').forEach(n=>n.remove());
   const think=document.createElement('div'); think.className='op-thinking';
-  think.innerHTML=`<div class="op-think-user">${txt}</div>
+  think.innerHTML=`<div class="op-think-user">${escapeHtml(txt)}</div>
     <div class="op-think-row"><span class="op-think-spark">${IC.op}</span><span class="op-think-dots"><i></i><i></i><i></i></span><span class="op-think-txt">Starting your ${OB_TYPES[type].code} — opening the report…</span></div>`;
   comp.insertAdjacentElement('afterend', think);
   requestAnimationFrame(()=>think.classList.add('show'));
@@ -1396,7 +1513,7 @@ function portfolioSummaryHtml(){
     const who=s.waitingOn?`${PEOPLE[s.waitingOn.who]?.name||''} · ${s.waitingOn.reason}`:'Your review is requested';
     return `<button class="dash-row" onclick="openProject('${s.id}')">
       <span class="dash-row-mark ${s.code==='BE-577'?'alt':''}">${s.code}</span>
-      <span class="dash-row-main"><span class="dash-row-h">${s.title}<span class="pill ${sm.cls}" style="margin-left:8px">${sm.label}</span></span><span class="dash-row-m">${who}</span></span>
+      <span class="dash-row-main"><span class="dash-row-h">${escapeHtml(s.title)}<span class="pill ${sm.cls}" style="margin-left:8px">${sm.label}</span></span><span class="dash-row-m">${who}</span></span>
       <span class="dash-row-pct">${s.pct}%<span class="dash-bar"><i style="width:${s.pct}%"></i></span></span>
     </button>`;
   }).join('')||'<div class="dash-empty">Nothing needs you right now.</div>';
@@ -1404,9 +1521,9 @@ function portfolioSummaryHtml(){
   const dls=up.map(u=>{
     const sev=u.left<0?'danger':(u.left<=7?'accent':'grey');
     const lbl=u.left<0?`${-u.left}d overdue`:(u.left===0?'due today':`${u.left}d left`);
-    return `<button class="dash-dl" onclick="${sessions.find(x=>x.id===u.id)?`openFiling('${u.id}')`:`showToast('Opening ${u.label} (demo)')`}">
-      <span class="dash-dl-date ${sev}">${u.dateLabel}</span>
-      <span class="dash-dl-main"><span class="dash-dl-h">${u.label}</span><span class="dash-dl-m">${u.note}</span></span>
+    return `<button class="dash-dl" onclick="${sessions.find(x=>x.id===u.id)?`openFiling('${u.id}')`:`showToast('Opening scheduled report (demo)')`}">
+      <span class="dash-dl-date ${sev}">${escapeHtml(u.dateLabel)}</span>
+      <span class="dash-dl-main"><span class="dash-dl-h">${escapeHtml(u.label)}</span><span class="dash-dl-m">${escapeHtml(u.note)}</span></span>
       <span class="pill ${sev==='grey'?'grey':(sev==='danger'?'red':'blue')}">${lbl}</span>
     </button>`;
   }).join('');
@@ -1455,6 +1572,10 @@ const UPCOMING=[
   {id:'sf425-q2',label:'SF-425 · Q2',date:{y:2026,m:6,d:31},dateLabel:'Fri, Jul 31',note:'22% ready · mapping in progress',sev:'grey'},
   {id:'cbcr-fy25',label:'Country-by-Country · FY25',date:{y:2026,m:8,d:15},dateLabel:'Tue, Sep 15',note:'38% ready · waiting on scope sign-off',sev:'grey'},
 ];
+export const reportRepository=new InMemoryReportRepository({
+  state:{sessions,dashboards:FILING_DASH,deadlines:UPCOMING},
+  reportTypes:REPORT_TYPES,
+});
 function daysLeftOf(dt){ return Math.round((new Date(dt.y,dt.m,dt.d)-new Date(TODAY.y,TODAY.m,TODAY.d))/86400000); }
 function calShift(delta){ let m=calM+delta,y=calY; if(m<0){m=11;y--;} if(m>11){m=0;y++;} calM=m; calY=y; renderUpcoming(); }
 function renderUpcoming(){
@@ -1485,7 +1606,7 @@ function renderUpcoming(){
     const left=dl<0?`${-dl} days ago`:(dl===0?'Today':`${dl} days left`);
     return `<div class="ua-row" onclick="openFiling('${u.id}')">
       <div class="ua-date"><div class="ua-d">${u.dateLabel}</div><div class="ua-left">${left}</div></div>
-      <div class="ua-body"><div class="ua-t">${u.label}</div><div class="ua-m">${u.note}</div></div>
+      <div class="ua-body"><div class="ua-t">${escapeHtml(u.label)}</div><div class="ua-m">${escapeHtml(u.note)}</div></div>
       <div class="chev">${IC.chev}</div>
     </div>`;}).join('');
   document.getElementById('upcomingCount').textContent=UPCOMING.length;
@@ -1645,7 +1766,7 @@ function renderArtForms(){
     total+=all.length;
     const isEx=artFormsExpanded.has(s.id);
     const shown=isEx?all:all.slice(0,CAP);
-    html+=`<div class="art-grp"><div class="art-grp-h"><span class="mark">${s.code}</span><div class="gb"><div class="gt">${s.title}</div><div class="gm">${s.sub}</div></div><span class="wq-count" style="background:var(--surface-3);color:var(--text-2)">${done}/${fd.total} complete</span></div>`;
+    html+=`<div class="art-grp"><div class="art-grp-h"><span class="mark">${s.code}</span><div class="gb"><div class="gt">${escapeHtml(s.title)}</div><div class="gm">${escapeHtml(s.sub)}</div></div><span class="wq-count" style="background:var(--surface-3);color:var(--text-2)">${done}/${fd.total} complete</span></div>`;
     html+=shown.map(f=>{
       const st=FORM_STATUS[f.status]||FORM_STATUS.todo;
       const meta=f.country?`${f.code} · ${f.country}`:`${f.code} · one form per ${fd.unit}`;
@@ -1992,7 +2113,7 @@ function cmpReportsHtml(){
   const pill=s=>s.waitingOn?`<span class="pill amber">Waiting on ${PEOPLE[s.waitingOn.who].name.split(' ')[0]}</span>`:`<span class="pill ${(STATUS_META[s.status]||{cls:'green'}).cls}">${(STATUS_META[s.status]||{label:'Active'}).label}</span>`;
   const bars=rows.map(s=>`
     <div class="cmp-bar">
-      <div class="cmp-bar-top"><span class="lab">${s.title}</span><span class="val">${s.pct||0}% ${pill(s)}</span></div>
+      <div class="cmp-bar-top"><span class="lab">${escapeHtml(s.title)}</span><span class="val">${s.pct||0}% ${pill(s)}</span></div>
       <div class="cmp-track"><i style="width:${s.pct||0}%;background:${color(s)}"></i></div>
     </div>`).join('');
   return `<div class="cmp"><div class="cmp-h">${IC.doc} Readiness across active reports<span class="cmp-sub">${rows.length} reports</span></div><div class="cmp-bars">${bars}</div></div>`;
@@ -2078,7 +2199,6 @@ function showTyping(){ append(`<div class="op-turn turn typing" id="typing"><div
 function clearTyping(){ const t=document.getElementById('typing'); if(t)t.remove(); }
 function approveFromLedger(){ if(mode==='be11' && sIdx===8){ disableTurn(8); userSay('Approve the final package'); advance(8); } }
 const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
-function escapeHtml(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function scrollThread(){const v=document.getElementById('thread');setTimeout(()=>{v.scrollTop=v.scrollHeight;},30);}
 
 /* ---------- history / chat sessions ---------- */
@@ -2098,11 +2218,17 @@ function sendReminder(id){
   const btn=document.querySelector('.wait-banner button'); if(btn) btn.disabled=true;
   append(sysTurn(`Reminder sent to ${who}`));
   busy=true;
-  setTimeout(()=>{
+  setTimeout(async ()=>{
     busy=false;
     const res=s.resolve;
+    try{
+      if(s.kind==='filing') await reportRepository.resolveWaiting(id);
+      else{ s.waitingOn=null; s.status=(res&&res.newStatus)||'active'; s.updated='just now'; s.updatedSort=0; }
+    }catch(error){
+      showToast(error instanceof Error?error.message:'Unable to update the report');
+      return;
+    }
     if(res){ append(opTurn(res.lvl,res.html,'')); }
-    s.waitingOn=null; s.status=(res&&res.newStatus)||'active'; s.updated='just now'; s.updatedSort=0;
     document.getElementById('waitBanner')?.remove();
     notifications.push({id:Date.now(),sessionId:id,text:(res&&res.notifText)||`${who} responded on ${s.title}`,time:'just now',read:currentSessionId===id});
     renderNotif(); renderSidebarSessions(); renderHome(); setSessBarGeneric(s);
@@ -2181,7 +2307,7 @@ function projChatActionBtn(id, fallbackLabel){
   const top=d.pending[0]||d.attention[0];
   const lvl=top?(top.sev==='warn'?'read':'prepare'):'read';
   const lvlLabel=lvl.charAt(0).toUpperCase()+lvl.slice(1);
-  const label=top?`${top.cta.label} — ${s.code}`:(fallbackLabel||`Open ${s.title}`);
+  const label=top?`${top.cta.label} — ${s.code}`:(fallbackLabel||`Open ${escapeHtml(s.title)}`);
   return `<button class="action-btn" onclick="openProject('${id}')">${label}<span class="lvl ${lvl}">${lvlLabel}</span></button>`;
 }
 function smartPrompt(id,key){
@@ -2202,22 +2328,22 @@ function smartPrompt(id,key){
     } else if(key==='waitrisk'){
       html=`<p>If ${PEOPLE[s.waitingOn.who].name.split(' ')[0]} doesn't respond, I'll escalate with a reminder and flag it as a blocker in your Home work queue. This filing's phase can't advance until it's resolved.</p>`;
     } else if(key==='status'){
-      html=`<p><strong>${s.title}</strong> is ${s.pct||0}% ready, currently in <strong>${filingPhaseLabel(s)}</strong>.</p>`+(d.agents.length?`<div class="kv">${d.agents.slice(-2).map(a=>`<span class="kk">${a.n}</span><span>${a.out}</span>`).join('')}</div>`:'');
+      html=`<p><strong>${escapeHtml(s.title)}</strong> is ${s.pct||0}% ready, currently in <strong>${filingPhaseLabel(s)}</strong>.</p>`+(d.agents.length?`<div class="kv">${d.agents.slice(-2).map(a=>`<span class="kk">${a.n}</span><span>${a.out}</span>`).join('')}</div>`:'');
     } else if(key==='blockers'){
       const blocks=d.attention.filter(a=>a.sev==='block');
-      html=blocks.length?`<p>Yes — ${blocks.length} blocker${blocks.length>1?'s':''}:</p><ul class="brief-list">${blocks.map(b=>`<li><span class="tag req">Blocked</span> ${b.t} — ${b.m}</li>`).join('')}</ul>`:`<p>No blockers right now — ${s.title} is on track.</p>`;
+      html=blocks.length?`<p>Yes — ${blocks.length} blocker${blocks.length>1?'s':''}:</p><ul class="brief-list">${blocks.map(b=>`<li><span class="tag req">Blocked</span> ${b.t} — ${b.m}</li>`).join('')}</ul>`:`<p>No blockers right now — ${escapeHtml(s.title)} is on track.</p>`;
     } else if(key==='needsdata'){
       const open=[...d.pending,...d.attention];
       html=open.length?`<p>Here's what's still outstanding:</p><ul class="brief-list">${open.map(x=>`<li><span class="tag conf">${x.sev||'info'}</span> ${x.t}</li>`).join('')}</ul>`:`<p>All required data is in — nothing outstanding right now.</p>`;
     } else if(key==='pkg'){
       const art=d.agents.find(a=>a.art&&a.art[0]==='Packages');
-      html=`<p>The filing package for <strong>${s.title}</strong> is staged and ready.</p>`;
+      html=`<p>The filing package for <strong>${escapeHtml(s.title)}</strong> is staged and ready.</p>`;
       if(art) actionsHtml=`<button class="action-btn" onclick="openArtifact('${art.art[0]}',${art.art[1]})">Open the package<span class="lvl read">Read</span></button>`;
     } else if(key==='diff'){
       html=`<p>Compared with the prior cycle, scope and required fields for ${s.code} were stable — no material rule changes were detected.</p>`;
     } else if(key==='audit'){
       const art=d.agents.find(a=>a.art&&a.art[0]==='Audits');
-      html=`<p>Here's the audit trail for <strong>${s.title}</strong> — every decision, source, and approval, timestamped.</p>`;
+      html=`<p>Here's the audit trail for <strong>${escapeHtml(s.title)}</strong> — every decision, source, and approval, timestamped.</p>`;
       if(art) actionsHtml=`<button class="action-btn" onclick="openArtifact('${art.art[0]}',${art.art[1]})">Open the audit trail<span class="lvl read">Read</span></button>`;
     } else if(key==='ownership6'){
       html=`<p>6 affiliates need ownership confirmation before they're decidable: <strong>2 newly acquired</strong>, <strong>3 with changed ownership %</strong>, and <strong>1</strong> pending a legal entity name change. This is part of the <strong>BE-11 · FY25</strong> project — open it to work these with the agents.</p>`;
@@ -2386,17 +2512,16 @@ function renderDoc(key,anchor){
   document.getElementById('docsContent').scrollTop=0;
   if(anchor){ setTimeout(()=>scrollDocAnchor(anchor),30); }
   currentDocKey=key;
-  renderMermaidBlocks();
+  void renderMermaidBlocks();
 }
-function renderMermaidBlocks(){
+async function renderMermaidBlocks(){
   const nodes=document.querySelectorAll('#docsContent pre.mermaid');
   if(!nodes.length) return;
-  if(typeof mermaid==='undefined'){
-    // CDN unreachable — leave the raw diagram source visible instead of failing silently.
-    nodes.forEach(n=>n.classList.add('mmd-fallback'));
-    return;
-  }
-  try{ mermaid.run({ nodes, suppressErrors:true }); }catch(e){ nodes.forEach(n=>n.classList.add('mmd-fallback')); }
+  try{
+    const mermaid=await loadMermaid();
+    const connectedNodes=Array.from(nodes).filter(node=>node.isConnected);
+    if(connectedNodes.length) await mermaid.run({ nodes:connectedNodes, suppressErrors:true });
+  }catch(e){ nodes.forEach(n=>n.classList.add('mmd-fallback')); }
 }
 function scrollDocAnchor(anchor){ if(!anchor)return; const el=document.getElementById(anchor); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }
 function openDoc(key,anchor){ currentDocKey=key; go('docs'); renderDoc(key,anchor||''); syncUrl(); }
@@ -2404,7 +2529,7 @@ function openDoc(key,anchor){ currentDocKey=key; go('docs'); renderDoc(key,ancho
    ONBOARD / STEP 0 — agent-driven report setup
    Principles: recordable · evidence-backed · you approve · you confirm
 =============================================================*/
-const AGENT_RUN_MS=3600;
+const AGENT_RUN_MS=AGENT_ACTIVITY_DURATION_MS;
 const FILE_READ_MS=3000;
 const FAB_TYPING_MS=1300;
 const OB_ICONS={
@@ -2623,6 +2748,21 @@ function setReportHeader(r){
    project from a list). */
 function openReport(type, seed, opts){
   const r=OB_TYPES[type]; if(!r) return;
+  const conversationBridge=(window as any).__startConversationalProject;
+  if(type==='be11' && !opts?.manual){
+    const resume=Boolean(opts?.resume);
+    const input={type,resume,sessionId:resume?currentSessionId:null};
+    if(conversationBridge){
+      conversationBridge(input);
+    } else {
+      setTimeout(()=>{
+        const readyBridge=(window as any).__startConversationalProject;
+        if(readyBridge) readyBridge(input);
+        else showToast('The Operator is still loading. Please try Start BE-11 again.');
+      },50);
+    }
+    return;
+  }
   obClock=0;
   RPT={
     type, full:(type==='be11'), tab:'overview',
@@ -2669,6 +2809,10 @@ function openReport(type, seed, opts){
     RPT.unlocked.scoping=true;
     RPT.tab='overview';
     rptLog('agent','Report opened',`${r.code} · Planning → Data collection → Review & approve → File`);
+    // Headless resume: build the real RPT under the Operator surface without
+    // switching to the tabbed view (which would tear down the conversational
+    // overlay via go()). The Operator reads this RPT; "Manual workspace" reveals it.
+    if(opts && opts.headless){ renderReport(); notifyFilingChanged(); return; }
     go('report');
     scanOverlay(1050);
     renderReport();
@@ -2763,6 +2907,7 @@ function renderReport(){
   renderSections();
   bindRptSpy();
   updateFabCtx();
+  notifyFilingChanged();
 }
 const LOCK_IC_SM='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>';
 function daysToDue(){ try{ const d=new Date(OB_TYPES[RPT.type].due); const ms=d-new Date(); return Math.max(0,Math.ceil(ms/86400000)); }catch(e){ return null; } }
@@ -3209,6 +3354,7 @@ function rptHubConfirm(){
   if(RPT.priorFiling) RPT.sources.push(RPT.priorFiling);
   RPT.uploaded=true;
   rptLog('commit','You confirmed the sources',RPT.sources.join(' · '));
+  syncWorkflowStage('entityScan');
   showToast('Sources confirmed — scanning'); renderReport(); rptScan();
 }
 function prevFilingName(){ const r=OB_TYPES[RPT.type]; const y=parseInt((r.period.match(/\d{4}/)||['2025'])[0],10)-1; return `${r.code.replace(/[^A-Za-z0-9]/g,'')}_${y}_filed.pdf`; }
@@ -3389,10 +3535,10 @@ function rptConfirmUpload(){
   showToast('Confirmed — scanning'); renderReport(); rptScan();
 }
 function rptScan(){ if(RPT.scanning) return; RPT.scanning=true; initSteps('scan'); renderReport(); scheduleSteps(AGENT_RUN_MS); scanOverlay(); rptLog('agent','Entity & Ownership Scan started','Reading ledger & prior filing'); setTimeout(()=>{ RPT.scanning=false; RPT.scanRun=true; rptLog('agent','Entity & Ownership Scan finished',`${RPT.entities.length} entities extracted`); showToast('Scan complete — '+RPT.entities.length+' entities'); renderReport(); }, AGENT_RUN_MS); }
-function rptApproveEntities(){ RPT.entitiesApproved=true; rptLog('commit','You confirmed the entity list',`${RPT.entities.length} entities with ownership & revenue`); renderReport(); if(!RPT.setupRun && !RPT.setupProposing) rptSetupRun(); }
+function rptApproveEntities(){ RPT.entitiesApproved=true; rptLog('commit','You confirmed the entity list',`${RPT.entities.length} entities with ownership & revenue`); syncWorkflowStage('setupProposal'); renderReport(); if(!RPT.setupRun && !RPT.setupProposing) rptSetupRun(); }
 function rptSetupRun(){ if(RPT.setupProposing) return; RPT.setupProposing=true; initSteps('setup'); renderReport(); scheduleSteps(AGENT_RUN_MS); rptLog('agent','Filing Setup Assistant started','Deriving name, period & due date'); setTimeout(()=>{ RPT.setupProposing=false; RPT.setupRun=true; rptLog('agent','Filing Setup Assistant finished','Name, period & due date proposed'); renderReport(); }, AGENT_RUN_MS); }
 function rptSetReadiness(v){ RPT.readiness=v; }
-function rptAcceptSetup(){ RPT.setupAccepted=true; RPT.readinessSet=true; RPT.setupDone=true; RPT.unlocked.scoping=true; rptLog('commit','You confirmed the report setup',`Readiness target ${fmtDate(RPT.readiness)}`); enterProject(); }
+function rptAcceptSetup(){ RPT.setupAccepted=true; RPT.readinessSet=true; RPT.setupDone=true; RPT.unlocked.scoping=true; rptLog('commit','You confirmed the report setup',`Readiness target ${fmtDate(RPT.readiness)}`); syncWorkflowStage('planning'); enterProject(); }
 function rptToScoping(){ rptLog('human','You moved to Planning','Scope & Forms standing by'); rptGoto('scoping'); if(!RPT.scopeRun && !RPT.scoping) setTimeout(rptScopeRun,340); }
 
 /* ================= SCOPING TAB ================= */
@@ -3551,7 +3697,7 @@ function rptSetForm(i,val){
   if(status) status.textContent=planApproveStatusText();
 }
 function rptScopeRun(){ if(RPT.scoping) return; RPT.scoping=true; initSteps('scope'); renderReport(); scheduleSteps(AGENT_RUN_MS); rptLog('agent','Planning started','Mapping forms, approvals & groups'); setTimeout(()=>{ RPT.scoping=false; RPT.scopeRun=true; const c=formCounts(); rptLog('agent','Planning finished',`${c.filing} filing · ${c.notfiling} not filing · two-level approval · groups assigned`); showToast('Plan ready — 1 form needs your call'); renderReport(); }, AGENT_RUN_MS); }
-function rptApproveScope(){ RPT.scopeApproved=true; RPT.scopeDone=true; RPT.unlocked.mapping=true; const c=formCounts(); rptLog('commit','You confirmed scope & forms',`${c.filing} filing · ${c.notfiling} not filing`); renderReport(); }
+function rptApproveScope(){ RPT.scopeApproved=true; RPT.scopeDone=true; RPT.unlocked.mapping=true; const c=formCounts(); rptLog('commit','You confirmed scope & forms',`${c.filing} filing · ${c.notfiling} not filing`); syncWorkflowStage('mapping'); renderReport(); }
 function rptToMapping(){ rptLog('human','You moved to Data collection','Collection Agent standing by'); rptGoto('mapping'); }
 
 /* ================= DATA COLLECTION — fixtures =================
@@ -3821,6 +3967,7 @@ function rptColSet(col,val){ if(!RPT) return; RPT.colOverrides[col]=val; rptLog(
 function rptUseData(){
   if(!RPT) return; RPT.connected=true;
   rptLog('commit','You accepted the pulled data',`${SOURCE_ENTITY_COVERAGE.matchedEntities} of ${SOURCE_ENTITY_COVERAGE.totalEntities} entities · ready to map`);
+  syncWorkflowStage('collection');
   showToast('Data accepted — mapping to BE-11 fields'); renderReport();
 }
 
@@ -4471,7 +4618,7 @@ function rptAssignCollector(fid){
     return;
   }
   f.status='collecting'; f.owner=fid==='f7'?'Tom Reyes · Brazil Finance':'Nordic controller'; rptLog('human','You assigned a collection agent',f.name+' → '+f.owner); renderReport(); setTimeout(()=>{ f.status='resolved'; f.from='Collected reply'; f.src=f.owner; f.conf='high'; rptLog('agent','Collection agent finished',f.name+' received & mapped'); showToast('Collected — '+f.name); renderReport(); }, Math.round(AGENT_RUN_MS*1.6)); }
-function rptValidate(){ RPT.validated=true; RPT.mapDone=true; rptLog('commit','You validated the mapped values','0 blocking issues · values cross-checked'); showToast('Validation passed'); renderReport(); }
+function rptValidate(){ RPT.validated=true; RPT.mapDone=true; rptLog('commit','You validated the mapped values','0 blocking issues · values cross-checked'); syncWorkflowStage('validation'); showToast('Validation passed'); renderReport(); }
 
 /* ================= VALIDATE · REVIEW · FILE ================= */
 /* These stages reuse the real BE-11 form UI (be11FormHtml) and the authored
@@ -4542,7 +4689,7 @@ function valList(){
   return `<div class="vchk-list">${rows}</div>`;
 }
 function rptValRun(){ if(RPT.validating) return; RPT.validating=true; initSteps('val'); renderReport(); scheduleSteps(AGENT_RUN_MS); rptLog('agent','Validation Agent started','Running BEA edit checks'); setTimeout(()=>{ RPT.validating=false; RPT.valRun=true; rptLog('agent','Validation Agent finished','6 checks · 0 blocking · 1 advisory'); showToast('Edit checks passed'); renderReport(); }, AGENT_RUN_MS); }
-function rptApproveValidation(){ RPT.valApproved=true; RPT.valDone=true; RPT.unlocked.review=true; rptLog('commit','You confirmed validation','0 blocking issues'); renderReport(); }
+function rptApproveValidation(){ RPT.valApproved=true; RPT.valDone=true; RPT.unlocked.review=true; rptLog('commit','You confirmed validation','0 blocking issues'); syncWorkflowStage('forms'); renderReport(); }
 
 /* ---------- Review ---------- */
 function rptToReview(){ RPT.formOpen=null; rptLog('human','You moved to Review & approve','Assembled forms ready'); rptGoto('review'); }
@@ -4610,7 +4757,7 @@ function openProjectForm(name){
 function backToProject(){ if(!RPT) return go('filings'); go('report'); RPT.tab='overview'; renderReport(); scrollToSec('overview'); }
 function curFormByName(name){ const e=RPT.entities.find(x=>x.name===name); return e?curForm(e):null; }
 function closeRptForm(){ RPT.formOpen=null; if(!RPT.unlocked.review){ RPT.tab='overview'; } renderReport(); scrollToSec(RPT.tab); }
-function rptMarkReviewed(name){ RPT.reviewed[name]=true; RPT.formOpen=null; rptLog('commit','You reviewed '+name,'Form approved for filing'); showToast('Marked reviewed'); renderReport(); scrollToSec('review'); }
+function rptMarkReviewed(name){ RPT.reviewed[name]=true; RPT.formOpen=null; rptLog('commit','You reviewed '+name,'Form approved for filing'); const counts=reviewCounts(); if(counts.total>0&&counts.done===counts.total) syncWorkflowStage('approval'); showToast('Marked reviewed'); renderReport(); scrollToSec('review'); }
 
 /* =============================================================
    FINAL APPROVAL — JUDGMENT LEDGER (ported from the Agent-First CRR flow)
@@ -4739,6 +4886,7 @@ function rptFinalApprove(override){
     rptLog('commit','You approved the final package','Signed on the judgment ledger · 0 blocking');
   }
   RPT.finalApproved=true; RPT.finalMode='idle'; RPT.finalSentBack=null;
+  syncWorkflowStage('filing');
   showToast(override?'Approved with override':'Final package approved');
   renderReport(); scrollToSec('review');
 }
@@ -4774,7 +4922,7 @@ function fileTab(){
   return agentCard({icon:OB_ICONS.sign,name:'File to BEA',tag:'File',role:'The package is validated and every form reviewed. Provide the authorized sign-off, then submit to the BEA.',body:pkg+sign,cta:`<div class="agentc-cta">${submit}</div>`});
 }
 function rptSign(){ if(RPT.signed) return; RPT.signed=true; rptLog('human','You signed off the filing','Julie Whitfield · authorized'); renderReport(); }
-function rptFile(){ if(!RPT.signed||RPT.filed) return; RPT.confNo='BEA-'+OB_TYPES[RPT.type].code.replace('-','')+'-'+Math.floor(100000+Math.random()*900000); RPT.filedAt=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); RPT.filed=true; RPT.fileDone=true; rptLog('commit','You filed the report',`${OB_TYPES[RPT.type].code} submitted · ${RPT.confNo}`); showToast('Filed — '+RPT.confNo); renderReport(); }
+function rptFile(){ if(!RPT.signed||RPT.filed) return; RPT.confNo='BEA-'+OB_TYPES[RPT.type].code.replace('-','')+'-'+Math.floor(100000+Math.random()*900000); RPT.filedAt=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); RPT.filed=true; RPT.fileDone=true; rptLog('commit','You filed the report',`${OB_TYPES[RPT.type].code} submitted · ${RPT.confNo}`); syncWorkflowStage('complete'); showToast('Filed — '+RPT.confNo); renderReport(); }
 
 /* ================= STUBS ================= */
 function stubTab(key){ const t=RP_TABS.find(x=>x.key===key); return `<div class="rp-stub">${OB_ICONS.info}<div class="rp-stub-h">${t.label} is up next</div><div class="rp-stub-m">This stage unlocks after Data collection. In this prototype the lifecycle is fleshed out through Setup, Planning, and Data collection.</div></div>`; }
@@ -4786,13 +4934,14 @@ function be577Stub(label){ return `<div class="rp-stub">${OB_ICONS.info}<div cla
 let fabSeeded=false;
 function toggleFab(){
   const open=document.body.classList.toggle('fab-open');
+  document.getElementById('chatFab')?.setAttribute('aria-expanded',String(open));
   if(open){
     if(!fabSeeded){ seedFab(); fabSeeded=true; }
     renderFabSuggests();
     setTimeout(()=>document.getElementById('fabInput')?.focus(),120);
   }
 }
-function closeFab(){ document.body.classList.remove('fab-open'); }
+function closeFab(){ document.body.classList.remove('fab-open'); document.getElementById('chatFab')?.setAttribute('aria-expanded','false'); }
 const HELP_LABEL={setup:'setup',scoping:'planning',mapping:'data collection',review:'review & approve',file:'filing'};
 function openFabFor(key){
   if(RPT){ RPT.tab=key; markRailActive(key); }
@@ -4858,7 +5007,8 @@ function fabMsg(who,text,ev){
   const body=document.getElementById('fabBody'); if(!body) return;
   const av = who==='user' ? OB_ICONS.human : OB_ICONS.setup;
   const evHtml = ev?`<div class="fm-ev">${OB_ICONS.check}${ev}</div>`:'';
-  body.insertAdjacentHTML('beforeend', `<div class="fab-msg ${who==='user'?'user':''}"><div class="fm-av">${av}</div><div class="fm-bubble">${text}${evHtml}</div></div>`);
+  const content=who==='user'?escapeHtml(text):text;
+  body.insertAdjacentHTML('beforeend', `<div class="fab-msg ${who==='user'?'user':''}"><div class="fm-av">${av}</div><div class="fm-bubble">${content}${evHtml}</div></div>`);
   body.scrollTop=body.scrollHeight;
 }
 function renderFabSuggests(){
@@ -4905,7 +5055,7 @@ function fabReplyFor(q){
     if(has('file right now','what can i file','ready to file','what is ready','whats ready'))
       return {t:`<strong>BE-11 · FY25</strong> is closest — 92% ready, it just needs Sarah Chen's sign-off before it can go to the BEA. Nothing else is ready yet: BE-577 Q2 is 64% (waiting on a Brazil intercompany balance) and CbCR is 38% (waiting on scope sign-off). You can also start a brand-new filing from the sidebar and I'll walk you through it.`, ev:'Based on your live portfolio'};
     if(has('deadline','due','overdue','coming up','calendar','when'))
-      return {t:`Your next deadline is <strong>${up[0].label}</strong> on ${up[0].dateLabel} — ${dl(up[0].left)} (${up[0].note}). After that: ${up.slice(1,3).map(u=>`${u.label} on ${u.dateLabel}`).join(', ')}.`, ev:'BEA / IRS filing calendar'};
+      return {t:`Your next deadline is <strong>${escapeHtml(up[0].label)}</strong> on ${escapeHtml(up[0].dateLabel)} — ${dl(up[0].left)} (${escapeHtml(up[0].note)}). After that: ${up.slice(1,3).map(u=>`${escapeHtml(u.label)} on ${escapeHtml(u.dateLabel)}`).join(', ')}.`, ev:'BEA / IRS filing calendar'};
     if(has('portfolio','overview','how many','status','everything'))
       return {t:`You have <strong>${active.length} active filings</strong> across the BEA, IRS and GSA. ${needs.length} need${needs.length===1?'s':''} you, ${waiting.length} ${waiting.length===1?'is':'are'} waiting on others, and the rest are progressing. The most pressing is <strong>${up[0].label}</strong> (${dl(up[0].left)}).`, ev:'Portfolio snapshot'};
     return {t:`I can help across your whole portfolio — ask what needs you this week, what's ready to file, or which deadlines are coming up. Open any filing and I'll get into the detail. I always show the evidence behind every answer.`, ev:'Operator workspace'};
@@ -4987,9 +5137,91 @@ function fabSend(preset){
 
 
 
-Object.assign(window as any, { openFilingDashboard });
+/* ============================================================================
+   Operator filing bridge
+   The conversational Operator surface is a lens over the *same* real filing the
+   tabbed view drives. These functions let React read live RPT state, enter a
+   filing headlessly (so the Operator overlay stays up), and reveal the tabbed
+   view of that exact RPT — no parallel simulation, no fast-forwarded flags.
+   ============================================================================ */
+/* Maps the imperative RPT progress flags onto the shared WorkflowStage vocab the
+   Operator conversation is organized around. Order matters: most-advanced first. */
+function rptStageKey(){
+  if(!RPT) return null;
+  if(RPT.fileDone) return 'complete';
+  if(RPT.finalApproved) return 'filing';
+  if(RPT.reviewDone) return 'approval';
+  if(RPT.valApproved || RPT.valDone) return 'forms';
+  if(RPT.validated || RPT.mapDone) return 'validation';
+  if(RPT.mapRun) return 'collection';
+  if(RPT.scopeApproved || RPT.scopeDone) return 'mapping';
+  if(RPT.scopeRun || RPT.setupDone) return 'planning';
+  if(RPT.setupRun) return 'setupProposal';
+  if(RPT.scanRun) return 'entityScan';
+  return 'sourceDiscovery';
+}
+/* The tab the tabbed view should open on for a given conversational stage. */
+function stageToManualTab(stage){
+  const map={ sourceDiscovery:'setup', entityScan:'setup', setupProposal:'setup',
+    planning:'scoping', mapping:'mapping', collection:'mapping', validation:'mapping',
+    forms:'review', approval:'review', filing:'file', complete:'activity' };
+  return map[stage] || 'overview';
+}
+function filingSnapshot(){
+  if(!RPT) return null;
+  const c=formCounts();
+  const fields=RPT.fields||[];
+  const sess=sessions.find(s=>s.id===currentSessionId);
+  return {
+    sessionId: currentSessionId,
+    type: RPT.type,
+    title: sess ? sess.title : rptName(),
+    stage: rptStageKey(),
+    entities: {
+      total: RPT.scanRun && RPT.entities ? RPT.entities.length : null,
+      filing: RPT.scopeRun ? c.filing : null,
+      notFiling: RPT.scopeRun ? c.notfiling : null,
+      needsReview: RPT.entities ? RPT.entities.filter(e=>e.review).length : 0,
+    },
+    mapping: {
+      mapped: RPT.mapRun ? fields.filter(f=>f.status==='mapped'||f.status==='resolved').length : null,
+      low: RPT.mapRun ? fields.filter(f=>f.status==='low').length : null,
+      gaps: RPT.mapRun ? gapCount() : null,
+    },
+    readiness: RPT.readinessSet ? RPT.readiness : null,
+    unlocked: { ...RPT.unlocked },
+    status: sess ? sess.status : null,
+  };
+}
+function notifyFilingChanged(){ try{ (window as any).__opFilingChanged?.(filingSnapshot()); }catch(e){ /* no subscriber */ } }
+/* Enter a filing under the Operator overlay: builds the real RPT (resume
+   baseline) without leaving the conversational surface, and wires
+   activeWorkflowId so the engine's own actions sync stage back to the shared
+   workflowRepository. Returns the live snapshot. */
+function opEnterFiling(id){
+  const s=sessions.find(x=>x.id===id); if(!s) return null;
+  const t=projectReportType(s);
+  currentSessionId=id; activeWorkflowId=id;
+  if(t && OB_TYPES[t]){ openReport(t,null,{manual:true,resume:true,headless:true}); }
+  return filingSnapshot();
+}
+/* Reveal the tabbed view of the RPT the Operator has been driving — same
+   instance, no rebuild. go('report') exits the conversational overlay. */
+function opRevealManual(tab){
+  if(!RPT) return;
+  const order=['overview','scoping','mapping','review','file','activity'];
+  if(tab && order.includes(tab)) RPT.tab=tab;
+  go('report');
+  scanOverlay(700);
+  renderReport();
+  syncUrl();
+}
+Object.assign(window as any, { openFilingDashboard, openManualProject, openManualReport });
+Object.assign(window as any, { toggleWorkspaceNav });
+Object.assign(window as any, { __opEnterFiling: opEnterFiling, __opFilingSnapshot: filingSnapshot, __opRevealManual: opRevealManual });
 /* ---- expose read-only fixture data used by React + shadcn surfaces ---- */
-Object.assign(window as any, { __OP_DATA: { REPORT_TYPES, OB_TYPES, get notifications(){ return notifications; }, get sessions(){ return sessions; } } });
+Object.assign(window as any, { __OP_DATA: { OB_TYPES, get notifications(){ return notifications; }, get sessions(){ return sessions; } } });
+Object.assign(window as any, { __onReportCreated: presentCreatedReport });
 
 /* ---- expose handlers used by inline onclick attributes ---- */
 Object.assign(window as any, { connectDataStep, connectReceipt, rptConnReuse, rptConnDrop, rptSourcePull, pullResultsCard, pullPreviewHtml, rptColBy, rptColSet, rptUseData, connLibraryHtml, fileDropHtml, connPill, rptOpenPacket, rptClosePacket, renderPacketModal, packetProgress, packetItemRow, packetUpdateFoot, rptPacketInput, rptPacketReuse, rptPacketDropFile, rptPacketSubmit });
@@ -5003,12 +5235,17 @@ let _legacyStarted = false;
 export function initLegacy(){
   if (_legacyStarted) return;
   _legacyStarted = true;
-if(typeof mermaid!=='undefined'){
-  mermaid.initialize({ startOnLoad:false, theme:'neutral', securityLevel:'strict', fontFamily:'AdelleSans, "Helvetica Neue", Helvetica, Arial, sans-serif' });
-}
 document.body.classList.add('op-home');
+if(window.matchMedia?.('(max-width: 760px)').matches){
+  document.body.classList.add('collapsed');
+  const navToggle=document.getElementById('workspaceNavToggle');
+  navToggle?.setAttribute('aria-expanded','false');
+  navToggle?.setAttribute('aria-label','Show navigation');
+  navToggle?.setAttribute('title','Show navigation');
+}
 renderStartMenu(); renderOperator(); renderAgents(); renderArt(); renderSched(); renderSidebarSessions(); renderNotif();
 try{ applyRoute(); syncUrl(true); }catch(e){}
+document.addEventListener('click',handleDocumentClick);
 window.addEventListener('popstate',(e)=>{ __routeDepth=(e.state&&typeof e.state.d==='number')?e.state.d:0; try{ applyRoute(); }catch(err){} });
 window.addEventListener('resize',()=>{ if(document.querySelector('.view.active')?.id==='view-home') moveOpLibInk(); if(inReport()) moveTabInk(); if(document.getElementById('startMenu')?.classList.contains('open')) positionStartMenu(); });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeDrawer();document.getElementById('notifPanel')?.classList.remove('open');closeAllSessionMenus();closeFab();}});

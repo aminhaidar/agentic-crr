@@ -53,7 +53,7 @@ const config: Config = {
         sm: "var(--r-sm)",
       },
       fontFamily: {
-        sans: ["AdelleSans", "Helvetica Neue", "Helvetica", "Arial", "sans-serif"],
+        sans: ["Roboto", "ui-sans-serif", "system-ui", "sans-serif"],
       },
       boxShadow: {
         pop: "var(--shadow-3)",

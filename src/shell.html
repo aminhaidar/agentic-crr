@@ -1,20 +1,20 @@
 
 <div class="app">
+  <button class="workspace-nav-toggle" id="workspaceNavToggle" onclick="toggleWorkspaceNav()" title="Hide navigation" aria-label="Hide navigation" aria-expanded="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2.5"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
+  </button>
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="sb-top">
-      <div class="brand" onclick="go('home')">
+      <button type="button" class="brand" onclick="go('home')" aria-label="Operator home">
         <div class="logo"><img src="/logo.png" alt="Workiva" /></div>
         <span>Agentic CRR</span>
-      </div>
-      <button class="collapse-btn" onclick="document.body.classList.toggle('collapsed');closeStartMenu()" title="Collapse sidebar">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2.5"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
       </button>
     </div>
     <div class="startwrap">
-      <button class="newbtn startbtn" onclick="toggleStartMenu(event)">
+      <button type="button" class="newbtn startbtn" onclick="toggleStartMenu(event)" aria-haspopup="menu" aria-expanded="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span>Start project</span>
+        <span>Start report</span>
         <svg class="startbtn-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <div class="start-menu" id="startMenu">
@@ -22,13 +22,13 @@
       </div>
     </div>
     <nav class="nav">
-      <div class="nav-item active" data-nav="home" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" stroke-linejoin="round"/></svg><span>Operator</span></div>
-      <div class="nav-item" data-nav="dashboard" onclick="go('dashboard')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg><span>Portfolio</span></div>
-      <div class="nav-item" data-nav="filings" onclick="go('filings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6.5A1.5 1.5 0 015.5 5H10l2 2h6.5A1.5 1.5 0 0120 8.5V18a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 18z"/></svg><span>Projects</span></div>
-      <div class="nav-item" data-nav="sources" onclick="go('sources')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6"/><path d="M4.5 12v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3v-6"/></svg><span>Sources</span></div>
+      <button type="button" class="nav-item active" data-nav="home" onclick="go('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" stroke-linejoin="round"/></svg><span>Operator</span></button>
+      <button type="button" class="nav-item" data-nav="dashboard" onclick="go('dashboard')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg><span>Portfolio</span></button>
+      <button type="button" class="nav-item" data-nav="filings" onclick="go('filings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6.5A1.5 1.5 0 015.5 5H10l2 2h6.5A1.5 1.5 0 0120 8.5V18a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 014 18z"/></svg><span>Projects</span></button>
+      <button type="button" class="nav-item" data-nav="sources" onclick="go('sources')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6"/><path d="M4.5 12v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3v-6"/></svg><span>Sources</span></button>
     </nav>
     <div class="sb-foot">
-      <div class="nav-item" data-nav="settings" onclick="go('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2.4" fill="#fff"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2.4" fill="#fff"/></svg><span>Settings</span></div>
+      <button type="button" class="nav-item" data-nav="settings" onclick="go('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="4" y1="8" x2="20" y2="8"/><circle cx="9" cy="8" r="2.4" fill="currentColor"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="15" cy="16" r="2.4" fill="currentColor"/></svg><span>Settings</span></button>
     </div>
   </aside>
 
@@ -43,7 +43,7 @@
         <div class="av sc" title="Sarah Chen — Controller">SC</div>
       </div>
       <div class="notif-wrap">
-        <button class="ghost bell-btn" onclick="toggleNotif(event)" title="Notifications">
+        <button type="button" class="ghost bell-btn" onclick="toggleNotif(event)" title="Notifications" aria-label="Notifications" aria-expanded="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 9a6 6 0 1112 0c0 5 2 6 2 6H4s2-1 2-6z"/><path d="M10 20a2 2 0 004 0"/></svg>
           <span class="notif-badge" id="notifBadge" style="display:none">0</span>
         </button>
@@ -59,18 +59,18 @@
         <div class="op-hero">
           <div class="op-hero-mark"><img src="/logo.png" alt="Workiva" /></div>
           <h1 class="op-greet" id="opGreet">Good morning, Julie</h1>
-          <p class="op-sub">Tell me what to file, or pick a report type — my agents take it from there.</p>
+          <p class="op-sub">What would you like to file today? Describe it, or pick a report type — the Operator’s agents take it from there.</p>
 
           <div class="op-quick" id="opQuick"></div>
 
           <div class="op-composer" id="opComposer">
             <div class="op-composer-in">
-              <textarea id="opInput" rows="1" placeholder="Ask the Operator, or say “Start a BE-11 for fiscal year 2025”…" onkeydown="opKey(event)" oninput="opAutoGrow(this)"></textarea>
+              <textarea id="opInput" rows="1" aria-label="Message the Operator" placeholder="Ask the Operator, or say “Start a BE-11 for fiscal year 2025”…" onkeydown="opKey(event)" oninput="opAutoGrow(this)"></textarea>
               <div class="op-composer-bar">
-                <button class="op-plus" title="Attach source data" onclick="showToast('Attach source data (demo)')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                <button type="button" class="op-plus" title="Attach source data" aria-label="Attach source data" onclick="showToast('Attach source data (demo)')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
                 <div class="op-composer-ctl">
-                  <button class="op-ctl-ghost" title="Voice (demo)" onclick="showToast('Voice input (demo)')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0012 0M12 17v4"/></svg></button>
-                  <button class="op-send" id="opSend" onclick="opSend()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg></button>
+                  <button type="button" class="op-ctl-ghost" title="Voice (demo)" aria-label="Use voice input" onclick="showToast('Voice input (demo)')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0012 0M12 17v4"/></svg></button>
+                  <button type="button" class="op-send" id="opSend" aria-label="Send message" onclick="opSend()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg></button>
                 </div>
               </div>
             </div>
@@ -136,8 +136,8 @@
           <div class="composer-inner">
             <div class="suggests" id="suggests"></div>
             <div class="composer-input">
-              <input id="chatInput" placeholder="Message the Operator…" onkeydown="if(event.key==='Enter')sendChat()" />
-              <button class="send" id="sendBtn" onclick="sendChat()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg></button>
+              <input id="chatInput" aria-label="Message the Operator" placeholder="Message the Operator…" onkeydown="if(event.key==='Enter')sendChat()" />
+              <button type="button" class="send" id="sendBtn" aria-label="Send message" onclick="sendChat()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg></button>
             </div>
           </div>
         </div>
@@ -197,10 +197,10 @@
         <p class="subtitle">Agents, connectors, and how much the Operator does on its own.</p>
         <div class="section-h">Automation</div>
         <div class="card">
-          <div class="set-row clickable" onclick="go('agents')">
+          <button type="button" class="set-row clickable" onclick="go('agents')">
             <div class="sl"><div class="t">Agents &amp; Skills</div><div class="d">See every agent &amp; skill, turn them on/off, and set autonomy ceilings</div></div>
             <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6"/></svg></span>
-          </div>
+          </button>
         </div>
         <div class="section-h">Connectors</div>
         <div class="card">
@@ -212,13 +212,13 @@
         <div class="card">
           <div class="set-row"><div class="sl"><div class="t">Default autonomy ceiling</div><div class="d">How far agents act before asking. Signature commits always require a human.</div></div>
             <select class="mini"><option>Read</option><option>Recommend</option><option selected>Prepare</option></select></div>
-          <div class="set-row"><div class="sl"><div class="t">Earned autonomy</div><div class="d">Raise ceilings as track record proves out</div></div><button class="switch on" onclick="this.classList.toggle('on')"></button></div>
+          <div class="set-row"><div class="sl"><div class="t">Earned autonomy</div><div class="d">Raise ceilings as track record proves out</div></div><button type="button" class="switch on" role="switch" aria-label="Earned autonomy" aria-checked="true" onclick="this.classList.toggle('on');this.setAttribute('aria-checked',String(this.classList.contains('on')))"></button></div>
         </div>
         <div class="section-h">Notifications</div>
         <div class="card">
           <div class="set-row"><div class="sl"><div class="t">Digest cadence</div><div class="d">Roll up non-urgent findings</div></div>
             <select class="mini"><option>Daily</option><option selected>Weekdays</option><option>Weekly</option></select></div>
-          <div class="set-row"><div class="sl"><div class="t">Urgent alerts</div><div class="d">Deadlines &amp; blocking issues · in-app + Teams</div></div><button class="switch on" onclick="this.classList.toggle('on')"></button></div>
+          <div class="set-row"><div class="sl"><div class="t">Urgent alerts</div><div class="d">Deadlines &amp; blocking issues · in-app + Teams</div></div><button type="button" class="switch on" role="switch" aria-label="Urgent alerts" aria-checked="true" onclick="this.classList.toggle('on');this.setAttribute('aria-checked',String(this.classList.contains('on')))"></button></div>
         </div>
         <div class="section-h">People &amp; permissions</div>
         <div class="card">
@@ -234,7 +234,7 @@
     <section class="view" id="view-docs">
       <div class="docs-shell">
         <nav class="docs-nav">
-          <div class="docs-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg><input id="docsSearch" placeholder="Search docs" oninput="filterDocsNav()"/></div>
+          <div class="docs-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg><input id="docsSearch" aria-label="Search product documentation" placeholder="Search docs" oninput="filterDocsNav()"/></div>
           <div id="docsTree"></div>
         </nav>
         <div class="docs-content" id="docsContent"></div>
@@ -295,7 +295,7 @@
 
 <!-- DRAWER -->
 <div class="drawer" id="drawer">
-  <div class="drawer-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg><h3>Agent activity</h3><button class="xbtn" onclick="closeDrawer()">✕</button></div>
+  <div class="drawer-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg><h3>Agent activity</h3><button type="button" class="xbtn" aria-label="Close activity" onclick="closeDrawer()">✕</button></div>
   <div class="drawer-b">
     <p class="muted" style="font-size:12.5px;margin-bottom:14px">The Operator is running <strong>3 specialist agents</strong> in parallel. It hides the machinery by default — this is the reasoning, one step away.</p>
     <div class="anode"><div class="at"><span class="sd run"></span><span class="an">Collection &amp; Chase agent</span><span class="lvl prepare" style="margin-left:auto">Prepare</span></div>
@@ -320,7 +320,7 @@
 <div class="toast-wrap" id="toastWrap"></div>
 
 <!-- AI CHAT FAB -->
-<button class="fab" id="chatFab" onclick="toggleFab()" title="Ask the Operator about this report">
+<button type="button" class="fab" id="chatFab" onclick="toggleFab()" title="Ask the Operator about this report" aria-label="Ask the Operator about this report" aria-expanded="false">
   <span class="fab-ic-chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" stroke-linejoin="round"/></svg></span>
   <span class="fab-ic-close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
 </button>
@@ -328,14 +328,14 @@
   <div class="fab-head">
     <div class="fab-head-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z" stroke-linejoin="round"/></svg></div>
     <div class="fab-head-txt"><div class="fab-head-name">Operator</div><div class="fab-head-ctx" id="fabCtx">General workspace</div></div>
-    <button class="xbtn" onclick="toggleFab()">✕</button>
+    <button type="button" class="xbtn" aria-label="Close Operator" onclick="toggleFab()">✕</button>
   </div>
   <div class="fab-body" id="fabBody"></div>
   <div class="fab-composer">
     <div class="fab-suggests" id="fabSuggests"></div>
     <div class="composer-input">
-      <input id="fabInput" placeholder="Ask about this report…" onkeydown="if(event.key==='Enter')fabSend()" />
-      <button class="send" onclick="fabSend()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg></button>
+      <input id="fabInput" aria-label="Ask the Operator about this report" placeholder="Ask about this report…" onkeydown="if(event.key==='Enter')fabSend()" />
+      <button type="button" class="send" aria-label="Send message" onclick="fabSend()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg></button>
     </div>
   </div>
 </div>

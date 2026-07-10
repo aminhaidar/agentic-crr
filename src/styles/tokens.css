@@ -1,0 +1,67 @@
+:root {
+  /* Workiva-aligned application semantics. Components consume these tokens;
+     legacy aliases remain in prototype.css during the React migration. */
+  --op-font-sans:
+    "Roboto", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial,
+    sans-serif;
+  --op-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --op-bg: #f4f5f8;
+  --op-surface-1: #ffffff;
+  --op-surface-2: #fafbfc;
+  --op-surface-3: #eef0f3;
+  --op-text-1: #0d1024;
+  --op-text-2: #4a5262;
+  --op-text-3: #6f7686;
+  --op-text-on-color: #ffffff;
+  --op-border-1: #c9cdd5;
+  --op-border-2: #dde0e5;
+  --op-border-3: #b6bac3;
+
+  --op-brand: #002c52;
+  --op-brand-hover: #0b4a80;
+  --op-brand-press: #001c33;
+  --op-brand-muted: #e6ecf1;
+  --op-brand-muted-2: #f1f4f7;
+  --op-interactive: #0075db;
+  --op-interactive-hover: #0062b8;
+
+  --op-success: #168049;
+  --op-success-bg: #e6f7ec;
+  --op-warning: #c26b04;
+  --op-warning-bg: #fff3df;
+  --op-danger: #9c1f18;
+  --op-danger-bg: #fdecec;
+  --op-danger-vivid: #dc332a;
+  --op-inverse: #1d1d1f;
+  --op-disabled-fill: #c7c7cc;
+
+  --op-dark-canvas: #0a0d13;
+  --op-dark-panel: #0e121a;
+  --op-dark-panel-2: #121722;
+  --op-dark-panel-3: #171d29;
+  --op-dark-text-1: #f4f7fc;
+  --op-dark-text-2: rgba(226, 234, 246, 0.72);
+  --op-dark-text-3: rgba(226, 234, 246, 0.48);
+  --op-dark-border: rgba(255, 255, 255, 0.1);
+  --op-dark-border-strong: rgba(255, 255, 255, 0.17);
+  --op-dark-interactive: #3f8fe0;
+  --op-dark-interactive-strong: #2f7fd0;
+  --op-dark-interactive-soft: rgba(63, 143, 224, 0.16);
+
+  --op-r-xs: 6px;
+  --op-r-sm: 8px;
+  --op-r-md: 12px;
+  --op-r-lg: 16px;
+  --op-r-xl: 20px;
+  --op-r-full: 999px;
+
+  --op-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --op-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --op-dur-1: 120ms;
+  --op-dur-2: 200ms;
+  --op-dur-3: 320ms;
+
+  --op-focus-ring: 0 0 0 4px var(--op-brand-muted), 0 0 0 1.5px var(--op-brand);
+  --op-focus-ring-dark: 0 0 0 3px rgba(63, 143, 224, 0.4);
+}

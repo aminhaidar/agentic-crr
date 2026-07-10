@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ConversationalWorkspace } from "@/features/operator-workspace/ConversationalWorkspace";
 import { NewReportDialog } from "./NewReportDialog";
 import { ThemeTransition } from "./ThemeTransition";
 
@@ -25,6 +26,9 @@ export function ChromeEnhancements() {
   return (
     <>
       <ThemeTransition />
+      <div className="conversation-workspace-host">
+        <ConversationalWorkspace />
+      </div>
       <NewReportDialog open={newReportOpen} onOpenChange={setNewReportOpen} />
     </>
   );
