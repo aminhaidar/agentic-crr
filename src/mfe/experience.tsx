@@ -2,9 +2,11 @@ import {
   DrawerContentComponentV2,
   DrawerExperience,
 } from "@workiva/drawer_experience_contribution";
-import { StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import App from "../App";
+// The MFE entry bypasses main.tsx, so it must pull the global stylesheets into
+// its own module graph — otherwise the app renders unstyled in the Wdesk drawer.
+import "../global-styles";
 
 /**
  * Mounts the existing Agentic CRR app into the Wdesk drawer the frame provides.
@@ -26,13 +28,18 @@ export class AgenticCrrExperience extends DrawerExperience {
         includeContainerPadding: false,
         content: {
           mount: (container: Element) => {
+            // Tell the engine it's inside the Wdesk frame so it can slim chrome
+            // that the frame already provides (brand, redundant nav). Set before
+            // initLegacy runs (App's effect) so the first render is embedded-aware.
+            window.__OP_EMBEDDED = true;
             root = createRoot(container);
+            // No StrictMode: like main.tsx, the engine injects the shell as raw
+            // markup and drives it imperatively — double-invoked effects would
+            // re-inject an empty shell.
             root.render(
-              <StrictMode>
-                <div style={{ height: "100dvh", minHeight: 0 }}>
-                  <App />
-                </div>
-              </StrictMode>,
+              <div style={{ height: "100dvh", minHeight: 0 }}>
+                <App />
+              </div>,
             );
           },
           unmount: () => {

@@ -41,6 +41,8 @@ declare global {
     __opFilingChanged?: (snapshot: FilingSnapshot | null) => void;
     // Bridge so the dark<->light navigation is played as an animated iris transition.
     __opThemeTransition?: (opts: { toDark: boolean; run: () => void }) => void;
+    // Set by the Wdesk microfrontend entry so the shell can slim redundant chrome.
+    __OP_EMBEDDED?: boolean;
     // Read-only fixture data exposed by the engine.
     __OP_DATA?: {
       OB_TYPES: Record<string, unknown>;

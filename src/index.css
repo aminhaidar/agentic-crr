@@ -13,6 +13,26 @@
   }
 }
 
+/* The ported prototype positions its nav toggle, modals, FAB, toasts, and
+   drawer with `position: fixed` (anchored to the viewport). That's correct
+   standalone, but inside the Wdesk microfrontend drawer those elements would
+   escape to the browser viewport and float over Wdesk's own chrome. A transform
+   makes .operator-shell the containing block for its fixed descendants, so they
+   scope to the app region in both contexts. */
+.operator-shell {
+  position: relative;
+  height: 100%;
+  transform: translateZ(0);
+}
+
+/* Inside the Wdesk frame the app's own sidebar brand ("Agentic CRR" + logo)
+   duplicates the nav entry Wdesk already shows, so hide it — the app then reads
+   as a native section of the frame rather than a nested app. (Set via
+   body.op-embedded from the microfrontend entry; standalone is unaffected.) */
+body.op-embedded .sb-top {
+  display: none;
+}
+
 /* Radix-positioned popovers own their own placement — neutralize the
    prototype's fixed positioning so shadcn menus float from their trigger. */
 .smenu-radix {

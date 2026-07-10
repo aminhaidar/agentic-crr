@@ -5236,7 +5236,10 @@ export function initLegacy(){
   if (_legacyStarted) return;
   _legacyStarted = true;
 document.body.classList.add('op-home');
-if(window.matchMedia?.('(max-width: 760px)').matches){
+if(window.__OP_EMBEDDED) document.body.classList.add('op-embedded');
+// Collapse the app's own nav by default on mobile, and when embedded in the
+// Wdesk frame (which already provides top-level navigation).
+if(window.__OP_EMBEDDED || window.matchMedia?.('(max-width: 760px)').matches){
   document.body.classList.add('collapsed');
   const navToggle=document.getElementById('workspaceNavToggle');
   navToggle?.setAttribute('aria-expanded','false');
