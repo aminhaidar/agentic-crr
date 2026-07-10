@@ -50,56 +50,39 @@
 
     <!-- OPERATOR LAUNCHPAD -->
     <section class="view active" id="view-home">
-      <div class="op-canvas" aria-hidden="true">
-        <span class="op-blob b1"></span>
-        <span class="op-blob b2"></span>
-        <span class="op-blob b3"></span>
-      </div>
       <div class="op-stage">
         <div class="op-hero">
           <div class="op-hero-mark"><img src="/logo.png" alt="Workiva" /></div>
-          <div class="op-hero-txt">
-            <h1 class="op-greet" id="opGreet">Good morning, Julie</h1>
-            <p class="op-sub" id="opSub">What would you like to file today? Describe it, or pick a report type — the Operator's agents take it from there.</p>
+          <h1 class="op-greet" id="opGreet">Good morning, Julie</h1>
+          <p class="op-sub" id="opSub">What would you like to file today?</p>
+        </div>
+
+        <div class="op-composer" id="opComposer">
+          <div class="op-composer-in">
+            <textarea id="opInput" rows="1" placeholder="Ask the Operator, or say “Start a BE-11 for fiscal year 2025”…" onkeydown="opKey(event)" oninput="opAutoGrow(this)"></textarea>
+            <div class="op-composer-bar">
+              <button class="op-plus" title="Attach source data" onclick="showToast('Attach source data (demo)')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+              <div class="op-composer-ctl">
+                <button class="op-ctl-ghost" title="Voice (demo)" onclick="showToast('Voice input (demo)')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0012 0M12 17v4"/></svg></button>
+                <button class="op-send" id="opSend" onclick="opSend()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg></button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="op-grid">
-          <div class="op-main">
-            <div class="op-quick" id="opQuick"></div>
+        <div class="op-quick" id="opQuick"></div>
 
-            <div class="op-composer" id="opComposer">
-              <div class="op-composer-in">
-                <textarea id="opInput" rows="1" placeholder="Ask the Operator, or say “Start a BE-11 for fiscal year 2025”…" onkeydown="opKey(event)" oninput="opAutoGrow(this)"></textarea>
-                <div class="op-composer-bar">
-                  <button class="op-plus" title="Attach source data" onclick="showToast('Attach source data (demo)')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-                  <div class="op-composer-ctl">
-                    <button class="op-ctl-ghost" title="Voice (demo)" onclick="showToast('Voice input (demo)')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0012 0M12 17v4"/></svg></button>
-                    <button class="op-send" id="opSend" onclick="opSend()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5"/><path d="M12 6v13"/></svg></button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="op-prompts" id="opPrompts"></div>
-
-            <div class="op-lib">
-              <div class="op-lib-tabs" id="opLibTabs">
-                <button class="op-lib-tab active" data-lib="conversations" onclick="opLib('conversations')">Conversations</button>
-                <button class="op-lib-tab" data-lib="artifacts" onclick="opLib('artifacts')">Artifacts</button>
-                <button class="op-lib-tab" data-lib="schedules" onclick="opLib('schedules')">Schedules</button>
-                <span class="op-lib-ink" id="opLibInk"></span>
-              </div>
-              <div class="op-lib-body" id="opLibBody"></div>
-            </div>
+        <div class="op-lib">
+          <div class="op-lib-tabs" id="opLibTabs">
+            <button class="op-lib-tab active" data-lib="conversations" onclick="opLib('conversations')">Conversations</button>
+            <button class="op-lib-tab" data-lib="artifacts" onclick="opLib('artifacts')">Artifacts</button>
+            <button class="op-lib-tab" data-lib="schedules" onclick="opLib('schedules')">Schedules</button>
+            <span class="op-lib-ink" id="opLibInk"></span>
           </div>
-
-          <aside class="op-rail" aria-label="Where things stand">
-            <div class="op-rail-panel">
-              <h2 class="op-rail-title">Where things stand</h2>
-              <div class="op-cockpit" id="opCockpit" role="group" aria-label="Filing status at a glance"></div>
-            </div>
-          </aside>
+          <div class="op-lib-body" id="opLibBody"></div>
         </div>
+
+        <div class="op-prompts" id="opPrompts" hidden></div>
       </div>
     </section>
 

@@ -1256,10 +1256,7 @@ function barClsForStatus(s){ if(s.waitingOn) return 'amber'; if(s.status==='need
 ================================================================*/
 let opLibTab='conversations';
 function renderOperator(){
-  renderOpBrief();
   renderOpQuick();
-  renderOpPrompts();
-  renderOpCockpit();
   renderOpLib(opLibTab);
   setTimeout(()=>moveOpLibInk(),20);
 }
